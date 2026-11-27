@@ -11,6 +11,7 @@ const nodosAnaliticaService = require('../services/nodosAnaliticaService');
 const nodosPwaService = require('../services/nodosPwaService');
 const nodosFotosService = require('../services/nodosFotosService');
 const lamdaImagenesBaseService = require('../services/lamdaImagenesBaseService');
+const costosGrafoService = require('../services/costosGrafoService');
 const dbProduccion = require('../config/database');
 
 const uploadFotoNodoMemoria = multer({
@@ -3557,6 +3558,40 @@ router.get('/pwa/:slug/:recurso', async (req, res) => {
     } catch (error) {
         console.error('❌ [NodosRoutes] Error sirviendo recurso PWA:', error.message);
         return res.status(500).json({ ok: false, error: 'Error generando recurso PWA del Nodo.' });
+    }
+});
+
+// Aliases administrativos transversales del Motor Unificado de Costos y Precios
+router.get('/costos/radar', bloquearEnDominioPublicoTienda, async (_req, res) => {
+    try {
+        const data = await costosGrafoService.obtenerRadarCostos(dbProduccion, { incluirCatalogoSelectores: true });
+        return res.json(data);
+    } catch (err) {
+        return res.status(err.statusCode || 500).json({ ok: false, error: err.message });
+    }
+});
+
+router.post('/costos/simular', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const body = req.body || {};
+        const disparador = body.disparador && typeof body.disparador === 'object' ? body.disparador : body;
+        const filtros = body.filtros && typeof body.filtros === 'object' ? body.filtros : body;
+        const sim = await costosGrafoService.simularCascada(dbProduccion, disparador, filtros);
+        return res.json(sim);
+    } catch (err) {
+        return res.status(err.statusCode || 500).json({ ok: false, error: err.message, detalle: err.detalle || null });
+    }
+});
+
+router.post('/costos/aplicar', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const body = req.body || {};
+        const disparador = body.disparador && typeof body.disparador === 'object' ? body.disparador : body;
+        const filtros = body.filtros && typeof body.filtros === 'object' ? body.filtros : body;
+        const resApl = await costosGrafoService.aplicarCascada(dbProduccion, disparador, filtros);
+        return res.json(resApl);
+    } catch (err) {
+        return res.status(err.statusCode || 500).json({ ok: false, error: err.message, detalle: err.detalle || null });
     }
 });
 

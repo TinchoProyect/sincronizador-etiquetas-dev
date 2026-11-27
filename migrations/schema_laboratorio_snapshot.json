@@ -1,6 +1,6 @@
 {
   "tableCount": 179,
-  "uniqueIndexCount": 268,
+  "uniqueIndexCount": 269,
   "tables": {
     "abrir_caja_aprendizaje": {
       "codigo_caja": {
@@ -13632,6 +13632,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "false"
+      },
+      "horas_reserva_transferencia_default": {
+        "ordinal_position": 11,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 6,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "24.00"
       }
     },
     "nodos_grupos_vidriera": {
@@ -15204,6 +15214,16 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "'HEREDAR_GRUPO'::character varying"
+      },
+      "precio_venta_vecino_anterior": {
+        "ordinal_position": 21,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_pedidos_avisos_pago": {
@@ -16936,6 +16956,26 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "false"
+      },
+      "reserva_stock_expira_at": {
+        "ordinal_position": 79,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "reserva_stock_estado": {
+        "ordinal_position": 80,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'NINGUNA'::character varying"
       }
     },
     "nodos_propuestas_combos": {
@@ -17352,6 +17392,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "tipo_solicitud": {
+        "ordinal_position": 22,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'NUEVA_FRACCION'::character varying"
       }
     },
     "nodos_reparto_radar": {
@@ -22206,6 +22256,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "referencia_pedido_codigo": {
+        "ordinal_position": 12,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "telemetria_accesos": {
@@ -26114,6 +26174,17 @@
       ],
       "has_expression_key": false,
       "sig": "stock_ventas_movimientos::(id)[pred=]"
+    },
+    {
+      "table_name": "stock_ventas_movimientos",
+      "index_name": "unq_svm_egreso_pedido_sku_origen",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_svm_egreso_pedido_sku_origen ON public.stock_ventas_movimientos USING btree (upper(btrim((referencia_pedido_codigo)::text)), upper(btrim(articulo_numero)), COALESCE(origen_ingreso, ''::character varying)) WHERE ((referencia_pedido_codigo IS NOT NULL) AND (tipo = 'egreso_venta'::text))",
+      "index_predicate": "((referencia_pedido_codigo IS NOT NULL) AND (tipo = 'egreso_venta'::text))",
+      "key_columns": [],
+      "has_expression_key": true,
+      "sig": "stock_ventas_movimientos::(upper(btrim((referencia_pedido_codigo)::text)), upper(btrim(articulo_numero)), coalesce(origen_ingreso, ''::character varying))[pred=((referencia_pedido_codigo is not null) and (tipo = 'egreso_venta'::text))]"
     },
     {
       "table_name": "telemetria_accesos",

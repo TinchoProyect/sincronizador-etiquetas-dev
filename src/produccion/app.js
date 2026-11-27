@@ -138,10 +138,12 @@ attachLamdaCloudRuntime(app, 3002);
 //Temporizacion -Mari
 const tiemposRouter = require('./routes/tiemposCarro');
 const nodosBarrialesRouter = require('./routes/nodosBarrialesRoutes');
+const costosGrafoRouter = require('./routes/costosGrafoRoutes');
 app.use('/api/tiempos', tiemposRouter);
 app.use('/api/produccion/tiempos', tiemposRouter);
 app.use('/api/produccion/nodos', nodosBarrialesRouter);
 app.use('/api/nodos', nodosBarrialesRouter);
+app.use('/api/produccion/costos-grafo', costosGrafoRouter);
 app.use('/api/produccion', produccionRoutes);
 
 function escHtmlAttrNodos(v) {

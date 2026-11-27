@@ -33,6 +33,7 @@ const {
     asegurarEsquemaAnaliticaNodos,
     vincularVisitanteConVecino
 } = require('./nodosAnaliticaService');
+const { obtenerMapaStockDisponibleNetoPorSku } = require('../utils/reservasStockSqlHelper');
 const BunkerService = require('../../logistica/services/bunkerService');
 const pagosBancariosService = require('./nodosPagosBancariosService');
 const recibosMarcaBlancaService = require('./nodosRecibosMarcaBlancaService');
@@ -8326,7 +8327,11 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         }
 
         await client.query('COMMIT');
-        await sincronizarNodosConCircuitoOperativoLamda();
+        if (nodoGuardado?.id) {
+            await sincronizarNodosConCircuitoOperativoLamda(null, { nodoId: Number(nodoGuardado.id), omitirLiberacionVencidas: true });
+        } else {
+            await sincronizarNodosConCircuitoOperativoLamda();
+        }
         return nodoGuardado;
     } catch (err) {
         await client.query('ROLLBACK');
@@ -8668,7 +8673,21 @@ async function crearPropuestaFraccion(payload = {}) {
     const nodoId = payload.nodo_solicitante_id ? Number(payload.nodo_solicitante_id) : null;
     const ingId = payload.ingrediente_sugerido_id ? Number(payload.ingrediente_sugerido_id) : null;
     const kilos = Math.max(0.01, Number(payload.kilos_sugeridos || 0.25));
-    const esHabilitacionExistente = Boolean(payload.solicitar_habilitacion_existente === true);
+    const TIPOS_SOLICITUD_VALIDOS = ['HABILITAR_SKU_EXISTENTE', 'NUEVA_FRACCION', 'NUEVO_PACK'];
+    let tipoSolicitud;
+    if (payload.tipo_solicitud !== undefined && payload.tipo_solicitud !== null && String(payload.tipo_solicitud).trim() !== '') {
+        tipoSolicitud = String(payload.tipo_solicitud).trim().toUpperCase();
+        if (!TIPOS_SOLICITUD_VALIDOS.includes(tipoSolicitud)) {
+            const errTipo = new Error(`tipo_solicitud inválido ("${payload.tipo_solicitud}"). Valores permitidos: ${TIPOS_SOLICITUD_VALIDOS.join(', ')}.`);
+            errTipo.statusCode = 400;
+            throw errTipo;
+        }
+    } else {
+        tipoSolicitud = (payload.solicitar_habilitacion_existente === true || Boolean(payload.articulo_bunker_sugerido_codigo))
+            ? 'HABILITAR_SKU_EXISTENTE'
+            : (Number(payload.pack_unidades || 1) > 1 ? 'NUEVO_PACK' : 'NUEVA_FRACCION');
+    }
+    const esHabilitacionExistente = tipoSolicitud === 'HABILITAR_SKU_EXISTENTE' || Boolean(payload.solicitar_habilitacion_existente === true);
     const aliasVidrieraSugerido = String(payload.alias_vidriera_sugerido || '').trim() || null;
 
     if (!ingId && !payload.articulo_bunker_sugerido_codigo) {
@@ -8809,8 +8828,8 @@ async function crearPropuestaFraccion(payload = {}) {
             categoria_sugerida, familia_bunker_id, articulo_principal_bunker,
             flujo_sugerido, ingrediente_sugerido_id, articulo_bunker_sugerido_codigo,
             kilos_sugeridos, insumo_envase_sugerido_id, segundos_estimados,
-            precio_objetivo_vecino, comentario_gestor, estado
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'PENDIENTE_COTIZACION')
+            precio_objetivo_vecino, comentario_gestor, tipo_solicitud, estado
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'PENDIENTE_COTIZACION')
         RETURNING *`,
         [
             codigoPropuesta,
@@ -8827,7 +8846,8 @@ async function crearPropuestaFraccion(payload = {}) {
             payload.insumo_envase_sugerido_id ? Number(payload.insumo_envase_sugerido_id) : null,
             Number(payload.segundos_estimados || 300),
             payload.precio_objetivo_vecino ? Number(payload.precio_objetivo_vecino) : null,
-            payload.comentario_gestor || ''
+            payload.comentario_gestor || '',
+            tipoSolicitud
         ]
     );
 
@@ -10989,7 +11009,11 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         }
     }
 
-    const mapaCombosPortal = await combosCompuestosService.obtenerMapaCombosYStockArmable(db).catch(() => new Map());
+    const skusPortal = Array.from(new Set(ofertasRes.rows.map(r => String(r.sku_nodo || '').trim().toUpperCase()).filter(Boolean)));
+    const [mapaCombosPortal, mapaStockNetoPortal] = await Promise.all([
+        combosCompuestosService.obtenerMapaCombosYStockArmable(db).catch(() => new Map()),
+        obtenerMapaStockDisponibleNetoPorSku(db, skusPortal).catch(() => new Map())
+    ]);
 
     let propuestasCombosEnriquecidas = [];
     let articulosElegiblesCombo = [];
@@ -11213,6 +11237,11 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             const narrativaTienda = o.narrativa_tienda ? String(o.narrativa_tienda).trim().slice(0, 600) : null;
             const infoComboOferta = mapaCombosPortal.get(combosCompuestosService.normalizarSku(o.sku_nodo));
             const esComboEfectivo = Boolean(o.es_combo || infoComboOferta);
+            const stockNetoRow = mapaStockNetoPortal.get(combosCompuestosService.normalizarSku(o.sku_nodo)) || null;
+            const stockArmableCalc = esComboEfectivo ? (infoComboOferta ? Number(infoComboOferta.stock_armable || 0) : 0) : null;
+            const stockDisponibleCalc = esComboEfectivo
+                ? stockArmableCalc
+                : (stockNetoRow ? Number(stockNetoRow.stock_disponible || 0) : 0);
             const jerarquiaB2B = jerarquiaBunkerHelper.resolverJerarquiaArticuloBunker(o, mapaJerarquiaB2B);
             const { nombre_base_oficial, presentacion_corta } = jerarquiaBunkerHelper.extraerNombreBaseYPresentacion(o);
             const claveProductoBase = jerarquiaBunkerHelper.construirClaveProductoBase({ ...o, es_combo: esComboEfectivo }, jerarquiaB2B);
@@ -11261,7 +11290,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             return {
                 ...o,
                 es_combo: esComboEfectivo,
-                stock_armable: esComboEfectivo ? (infoComboOferta ? infoComboOferta.stock_armable : 0) : null,
+                stock_armable: stockArmableCalc,
+                stock_disponible: stockDisponibleCalc,
+                stock_reservado: stockNetoRow ? Number(stockNetoRow.stock_reservado || 0) : 0,
                 componentes_combo: esComboEfectivo && infoComboOferta ? infoComboOferta.componentes : [],
                 clave_producto_base: claveProductoBase,
                 jerarquia_b2b: jerarquiaB2B,
@@ -11366,6 +11397,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 linea_negocio: o.linea_negocio || null,
                 es_combo: Boolean(o.es_combo),
                 stock_armable: o.es_combo ? Number(o.stock_armable || 0) : null,
+                stock_disponible: Number(o.stock_disponible || 0),
                 componentes_vidriera: componentesVidriera,
                 precio_venta_vecino: Number(o.precio_venta_vecino),
                 destacado_tienda: Boolean(o.destacado_tienda),
@@ -12131,6 +12163,13 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             ? 'EFECTIVO'
             : 'TRANSFERENCIA';
         const estadoPago = medioPago === 'EFECTIVO' ? 'COBRAR_EN_ENTREGA' : 'PENDIENTE_TRANSFERENCIA';
+        const cfgHorasRes = await client.query(
+            `SELECT COALESCE(horas_reserva_transferencia_default, 24.00)::numeric(6,2) AS horas_ttl
+             FROM public.nodos_configuracion_canal
+             ORDER BY id ASC LIMIT 1`
+        );
+        const horasTtlReserva = Math.max(1, Number(cfgHorasRes.rows[0]?.horas_ttl || 24));
+        const reservaStockEstadoInicial = estadoPago === 'PENDIENTE_TRANSFERENCIA' ? 'ACTIVA' : 'CONFIRMADA';
 
         // Registrar o actualizar el comprador de forma determinista por clave única (nodo_id, telefono_normalizado)
         const telNormVecino = normalizarTelefonoVecinoNodo(vecinoTelefono);
@@ -12357,6 +12396,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 latitud, longitud, gps_origen,
                 fecha_entrega_comprometida, fecha_entrega_label, ventana_horaria_label,
                 entrar_en_corte_actual, medio_pago, estado_pago, estado_operativo,
+                reserva_stock_estado, reserva_stock_expira_at,
                 tracking_token, hito_tracking_actual,
                 en_hoja_ruta, incluido_reparto_manual,
                 subtotal_productos_vecino, cargo_envio_barrial, total_vecino,
@@ -12364,7 +12404,9 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 alicuota_iva_margen_pct, alicuota_iibb_margen_pct,
                 retencion_iva_margen, retencion_iibb_margen, retencion_fiscal_margen
              ) VALUES (
-                $1,$2,$3,$4,$5,$26,$27,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',$18,1,$25,false,$19,$20,$21,$22,$23,$24,$28,$29,$30,$31,$32
+                $1,$2,$3,$4,$5,$26,$27,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',
+                $33, CASE WHEN $33 = 'ACTIVA' THEN NOW() + make_interval(hours => $34::numeric) ELSE NULL END,
+                $18,1,$25,false,$19,$20,$21,$22,$23,$24,$28,$29,$30,$31,$32
              ) RETURNING *`,
             [
                 codigoPedido,
@@ -12398,7 +12440,9 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 tramoFiscalPedido.alicuota_iibb_pct,
                 tramoFiscalPedido.iva_excedente,
                 tramoFiscalPedido.iibb_excedente,
-                tramoFiscalPedido.retencion_fiscal_total
+                tramoFiscalPedido.retencion_fiscal_total,
+                reservaStockEstadoInicial,
+                horasTtlReserva
             ]
         );
         const pedidoRow = insPed.rows[0];
@@ -13023,11 +13067,35 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
 }
 
 /**
+ * Marca como EXPIRADA cualquier reserva temporal de stock PENDIENTE_TRANSFERENCIA cuyo TTL haya vencido
+ * sin acreditación ni presupuesto generado. 100% determinista e idempotente.
+ */
+async function liberarReservasVencidasNodos(runner = null) {
+    const q = runner || db;
+    const res = await q.query(`
+        UPDATE public.nodos_pedidos_vecinos
+        SET reserva_stock_estado = 'EXPIRADA',
+            updated_at = NOW()
+        WHERE reserva_stock_estado = 'ACTIVA'
+          AND reserva_stock_expira_at IS NOT NULL
+          AND reserva_stock_expira_at <= NOW()
+          AND presupuesto_id_local IS NULL
+        RETURNING id, codigo_pedido, nodo_id
+    `);
+    return {
+        liberadas: res.rowCount || 0,
+        pedidos: res.rows
+    };
+}
+
+/**
  * Sincroniza de forma nativa los Nodos, sus Fracciones aprobadas y sus Canastos/Lotes
  * dentro del circuito operativo habitual de LAMDA:
  * 1. public.clientes + public.bunker_clientes + public.clientes_domicilios (con coordenadas validadas para Mapa Logística :3005)
  * 2. public.articulos + public.bunker_articulos + public.stock_real_consolidado + public.recetas + public.receta_ingredientes (para Configurar Carros y Carro Personal)
  * 3. public.presupuestos + public.presupuestos_detalles (para Pizarra Principal :3000, Imprimir, Armar Pedido, Chequeo, Retira Depósito y Reparto :3005)
+ *
+ * Soporta modo puntual (`{ pedidoId }`, `{ canastoId }`, `{ nodoId }`) para no escanear históricos completos en eventos transaccionales.
  */
 async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones = {}) {
     const q = runner || db;
@@ -13036,8 +13104,54 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
     const anatomiaOverride = (opts.anatomiaOverride && typeof opts.anatomiaOverride === 'object') ? opts.anatomiaOverride : null;
     const forzarPreciosNodos = Boolean(opts.forzarPreciosNodos);
 
-    // 1. Asegurar Clientes y Domicilios Geolocalizados por cada Nodo activo
-    const nodosRes = await q.query('SELECT * FROM public.nodos_maestro WHERE COALESCE(activo, true) = true ORDER BY id ASC');
+    const pedidoFiltroId = opts.pedidoId ? Number(opts.pedidoId) : null;
+    const canastoFiltroParamId = opts.canastoId ? Number(opts.canastoId) : null;
+    let nodoFiltroId = opts.nodoId ? Number(opts.nodoId) : null;
+    let canastoTargetId = canastoFiltroParamId;
+    let esFulfillmentPuntual = false;
+
+    if (pedidoFiltroId) {
+        const pedMetaRes = await q.query(
+            `SELECT id, nodo_id, lote_canasto_id FROM public.nodos_pedidos_vecinos WHERE id = $1 LIMIT 1`,
+            [pedidoFiltroId]
+        );
+        if (pedMetaRes.rows.length === 0) {
+            return { puntual: true, omitido: true, motivo: 'pedido_no_encontrado' };
+        }
+        const pm = pedMetaRes.rows[0];
+        nodoFiltroId = Number(pm.nodo_id);
+        if (pm.lote_canasto_id) {
+            canastoTargetId = Number(pm.lote_canasto_id);
+        } else {
+            esFulfillmentPuntual = true;
+        }
+    } else if (canastoTargetId) {
+        const canMetaRes = await q.query(
+            `SELECT id, nodo_id FROM public.nodos_lotes_estacion WHERE id = $1 LIMIT 1`,
+            [canastoTargetId]
+        );
+        if (canMetaRes.rows.length === 0) {
+            return { puntual: true, omitido: true, motivo: 'canasto_no_encontrado' };
+        }
+        nodoFiltroId = Number(canMetaRes.rows[0].nodo_id);
+    }
+
+    const esSincronizacionPuntual = Boolean(pedidoFiltroId || canastoTargetId || nodoFiltroId);
+    const ejecutarPaso2Catalogo = opts.incluirCatalogo !== undefined
+        ? Boolean(opts.incluirCatalogo)
+        : (Boolean(skuDesdeCotizador || forzarPreciosNodos) || (!pedidoFiltroId && !canastoTargetId));
+
+    if (!esSincronizacionPuntual && !opts.omitirLiberacionVencidas) {
+        await liberarReservasVencidasNodos(q).catch(() => {});
+    }
+
+    // 1. Asegurar Clientes y Domicilios Geolocalizados por cada Nodo activo (puntual si nodoFiltroId está presente)
+    const nodosRes = nodoFiltroId
+        ? await q.query(
+            'SELECT * FROM public.nodos_maestro WHERE COALESCE(activo, true) = true AND id = $1::int ORDER BY id ASC',
+            [nodoFiltroId]
+        )
+        : await q.query('SELECT * FROM public.nodos_maestro WHERE COALESCE(activo, true) = true ORDER BY id ASC');
     const mapaClienteDomicilio = new Map();
 
     for (const nodo of nodosRes.rows) {
@@ -13118,8 +13232,9 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
         });
     }
 
-    // 2. Asegurar Artículos, Búnker (Anatomía Nativa LAMDA: Familias Reales + Nomenclatura Posicional pos_1..pos_5 + Recetas con Envase Primario), Stock Real Consolidado
-    const listasPreciosRes = await q.query(`
+    if (ejecutarPaso2Catalogo) {
+        // 2. Asegurar Artículos, Búnker (Anatomía Nativa LAMDA: Familias Reales + Nomenclatura Posicional pos_1..pos_5 + Recetas con Envase Primario), Stock Real Consolidado
+        const listasPreciosRes = await q.query(`
         SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial
         FROM public.bunker_listas_precios
         WHERE activa = true
@@ -13486,23 +13601,48 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             SELECT UPPER(sku_nodo) FROM public.nodos_articulos_catalogo WHERE activo = false
         );
     `);
+    }
+
+    if (opts.soloCatalogo === true) {
+        return { puntual: true, soloCatalogo: true };
+    }
 
     // 3. Sincronizar cada Pedido/Canasto individual de Vecino con public.presupuestos y public.presupuestos_detalles
     //    (Arquitectura nativa LAMDA: 1 Cliente Nodo [9001] -> N Presupuestos individuales [NB-1001, NB-1002, ...],
     //     permitiendo control real de faltantes, Configurar Carros, 1 Remito R impreso por vecino y Verificación nativa).
-    await q.query(`
-        UPDATE public.presupuestos
-        SET activo = false
-        WHERE id_presupuesto_ext LIKE 'CAN-%'
-          AND activo = true
-    `);
+    if (!esSincronizacionPuntual) {
+        await q.query(`
+            UPDATE public.presupuestos
+            SET activo = false
+            WHERE id_presupuesto_ext LIKE 'CAN-%'
+              AND activo = true
+        `);
+    }
 
-    const canastosRes = await q.query(`
-        SELECT nle.*, nm.nombre_marca, nm.gestor_nombre
-        FROM public.nodos_lotes_estacion nle
-        JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
-        ORDER BY nle.id ASC
-    `);
+    const canastosRes = esFulfillmentPuntual
+        ? { rows: [] }
+        : (canastoTargetId
+            ? await q.query(`
+                SELECT nle.*, nm.nombre_marca, nm.gestor_nombre
+                FROM public.nodos_lotes_estacion nle
+                JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+                WHERE nle.id = $1::int
+                ORDER BY nle.id ASC
+            `, [canastoTargetId])
+            : (nodoFiltroId
+                ? await q.query(`
+                    SELECT nle.*, nm.nombre_marca, nm.gestor_nombre
+                    FROM public.nodos_lotes_estacion nle
+                    JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+                    WHERE nle.nodo_id = $1::int
+                    ORDER BY nle.id ASC
+                `, [nodoFiltroId])
+                : await q.query(`
+                    SELECT nle.*, nm.nombre_marca, nm.gestor_nombre
+                    FROM public.nodos_lotes_estacion nle
+                    JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+                    ORDER BY nle.id ASC
+                `)));
 
     for (const canasto of canastosRes.rows) {
         const infoCli = mapaClienteDomicilio.get(Number(canasto.nodo_id));
@@ -13746,29 +13886,39 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
     }
 
     // 4. Sincronizar órdenes individuales de Tiendas Online / E-Commerce Fulfillment (lote_canasto_id IS NULL)
-    const pedidosFulfillmentRes = await q.query(`
-        SELECT npv.*,
-               nm.nombre_marca, nm.gestor_nombre, nm.perfil_operativo, nm.modulos_activos,
-               npep.operador_postal AS postal_operador,
-               npep.modalidad_postal AS postal_modalidad,
-               npep.localidad_nombre AS postal_localidad,
-               npep.provincia_nombre AS postal_provincia,
-               npep.cp_destino AS postal_cp,
-               npep.numero_tracking AS postal_numero_tracking
-        FROM public.nodos_pedidos_vecinos npv
-        JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
-        LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
-        WHERE npv.lote_canasto_id IS NULL
-          AND (
-              npep.id IS NOT NULL
-              OR UPPER(COALESCE(npv.modalidad_entrega, '')) IN ('PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL')
-              OR (
-                  COALESCE((nm.modulos_activos->>'despacho_desde_lamda')::boolean, UPPER(COALESCE(nm.perfil_operativo, 'VECINOS')) IN ('REDES', 'ECOMMERCE_FULFILLMENT')) = true
-                  AND COALESCE((nm.modulos_activos->>'canasto_consolidado')::boolean, UPPER(COALESCE(nm.perfil_operativo, 'VECINOS')) NOT IN ('REDES', 'ECOMMERCE_FULFILLMENT')) = false
+    const filtroFulfillmentSql = pedidoFiltroId
+        ? 'AND npv.id = $1::int'
+        : (nodoFiltroId ? 'AND npv.nodo_id = $1::int' : '');
+    const filtroFulfillmentParams = pedidoFiltroId
+        ? [pedidoFiltroId]
+        : (nodoFiltroId ? [nodoFiltroId] : []);
+
+    const pedidosFulfillmentRes = canastoTargetId
+        ? { rows: [] }
+        : await q.query(`
+            SELECT npv.*,
+                   nm.nombre_marca, nm.gestor_nombre, nm.perfil_operativo, nm.modulos_activos,
+                   npep.operador_postal AS postal_operador,
+                   npep.modalidad_postal AS postal_modalidad,
+                   npep.localidad_nombre AS postal_localidad,
+                   npep.provincia_nombre AS postal_provincia,
+                   npep.cp_destino AS postal_cp,
+                   npep.numero_tracking AS postal_numero_tracking
+            FROM public.nodos_pedidos_vecinos npv
+            JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+            LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
+            WHERE npv.lote_canasto_id IS NULL
+              ${filtroFulfillmentSql}
+              AND (
+                  npep.id IS NOT NULL
+                  OR UPPER(COALESCE(npv.modalidad_entrega, '')) IN ('PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL')
+                  OR (
+                      COALESCE((nm.modulos_activos->>'despacho_desde_lamda')::boolean, UPPER(COALESCE(nm.perfil_operativo, 'VECINOS')) IN ('REDES', 'ECOMMERCE_FULFILLMENT')) = true
+                      AND COALESCE((nm.modulos_activos->>'canasto_consolidado')::boolean, UPPER(COALESCE(nm.perfil_operativo, 'VECINOS')) NOT IN ('REDES', 'ECOMMERCE_FULFILLMENT')) = false
+                  )
               )
-          )
-        ORDER BY npv.id ASC
-    `);
+            ORDER BY npv.id ASC
+        `, filtroFulfillmentParams);
 
     for (const pedido of pedidosFulfillmentRes.rows) {
         const infoCli = mapaClienteDomicilio.get(Number(pedido.nodo_id));
@@ -14869,7 +15019,7 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
     }
 
     await sincronizarCanastosEstacionNodos();
-    await sincronizarNodosConCircuitoOperativoLamda();
+    await sincronizarNodosConCircuitoOperativoLamda(null, { pedidoId: Number(pedidoId) });
 
     const etiqueta = !desmarcar ? await generarEtiquetaDePedidoExistente(pedidoId) : null;
     await sincronizarCanastosEstacionNodos();
@@ -14942,7 +15092,7 @@ async function armarTodasBolsasDeCanasto(canastoId, payload = {}) {
     }
 
     await sincronizarCanastosEstacionNodos();
-    await sincronizarNodosConCircuitoOperativoLamda();
+    await sincronizarNodosConCircuitoOperativoLamda(null, { canastoId: Number(canastoId) });
     const etiquetaCanasto = await generarEtiquetaQrMaestroCanasto(canastoId);
     await sincronizarCanastosEstacionNodos();
     const tablero = await obtenerTableroMesaArmadoDeposito();
@@ -15050,7 +15200,7 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
         const origenRetiro = String(payload.origen_evento || 'DESPACHO_LOTE_NODO').trim();
 
         const pedsActivosCanRes = await client.query(
-            `SELECT id, COALESCE(stock_descontado_deposito, false) AS stock_descontado_deposito
+            `SELECT id, codigo_pedido, COALESCE(stock_descontado_deposito, false) AS stock_descontado_deposito
              FROM public.nodos_pedidos_vecinos
              WHERE lote_canasto_id = $1
                AND COALESCE(estado_operativo, '') <> 'ANULADO'
@@ -15059,15 +15209,14 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
             [canasto.id]
         );
 
-        const idsSinDescontarCanasto = pedsActivosCanRes.rows
-            .filter(r => !r.stock_descontado_deposito)
-            .map(r => Number(r.id));
+        const pedsSinDescontarCanasto = pedsActivosCanRes.rows.filter(r => !r.stock_descontado_deposito);
 
-        if (idsSinDescontarCanasto.length > 0) {
+        for (const pedSinDesc of pedsSinDescontarCanasto) {
             await combosCompuestosService.registrarEgresoStockConExplosionCombo(client, {
-                pedidoIds: idsSinDescontarCanasto,
+                pedidoIds: [Number(pedSinDesc.id)],
+                referenciaPedidoCodigo: pedSinDesc.codigo_pedido,
                 origenIngreso: 'canasto_nodo_barrial',
-                observacionBase: `Despacho Canasto ${canasto.codigo_canasto} (${canasto.nombre_marca})`
+                observacionBase: `Despacho Canasto ${canasto.codigo_canasto} (${canasto.nombre_marca}) · #${pedSinDesc.codigo_pedido}`
             });
         }
 
@@ -16139,6 +16288,8 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
                      comprobante_referencia = $2,
                      fecha_conciliacion_pago = NOW(),
                      impactado_cta_cte_pago = true,
+                     reserva_stock_estado = 'CONFIRMADA',
+                     reserva_stock_expira_at = NULL,
                      movimiento_pago_cc_id = $3,
                      updated_at = NOW()
                  WHERE id = $4`,
@@ -16193,6 +16344,8 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
                      comprobante_referencia = $1,
                      fecha_conciliacion_pago = NOW(),
                      impactado_cta_cte_pago = true,
+                     reserva_stock_estado = 'CONFIRMADA',
+                     reserva_stock_expira_at = NULL,
                      updated_at = NOW()
                  WHERE id = $2`,
                 [referencia, ped.id]
@@ -16225,7 +16378,7 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
         client.release();
     }
 
-    await sincronizarNodosConCircuitoOperativoLamda();
+    await sincronizarNodosConCircuitoOperativoLamda(null, { pedidoId: Number(pedidoId) });
 
     let envioWhatsappRecibo = null;
     if (despachoReciboEfectivoId && payload.omitir_whatsapp_automatico !== true) {
@@ -16373,7 +16526,7 @@ async function marcarEmpaqueFulfillmentPedido(pedidoId, payload = {}) {
         client.release();
     }
 
-    await sincronizarNodosConCircuitoOperativoLamda();
+    await sincronizarNodosConCircuitoOperativoLamda(null, { pedidoId: pid });
     const etiqueta = desmarcar ? null : await generarEtiquetaFulfillmentMarcaBlanca(pid);
     const tablero = await obtenerTableroMesaArmadoDeposito();
     return { etiqueta, tablero };
@@ -16658,6 +16811,7 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
             if (!ped.stock_descontado_fulfillment) {
                 await combosCompuestosService.registrarEgresoStockConExplosionCombo(client, {
                     pedidoIds: [pid],
+                    referenciaPedidoCodigo: ped.codigo_pedido,
                     origenIngreso: 'fulfillment_paqueteria',
                     observacionBase: `Despacho Postal ${ped.nombre_marca} #${ped.codigo_pedido} (${operadorLabel} #${guiaResuelta.numero_tracking})`
                 });
@@ -16786,7 +16940,7 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
         client.release();
     }
 
-    await sincronizarNodosConCircuitoOperativoLamda();
+    await sincronizarNodosConCircuitoOperativoLamda(null, { pedidoId: pid });
     const tablero = await obtenerTableroMesaArmadoDeposito();
     return {
         despacho: resultadoDespacho,
@@ -18294,6 +18448,8 @@ async function anularPedidoVecinoNodo(pedidoId, payload = {}) {
              SET estado_operativo = 'ANULADO',
                  estado_pago = $1,
                  impactado_cta_cte_pago = false,
+                 reserva_stock_estado = 'LIBERADA',
+                 reserva_stock_expira_at = NULL,
                  motivo_anulacion_ajuste = $2,
                  fecha_anulacion = NOW(),
                  updated_at = NOW()
@@ -22371,6 +22527,7 @@ module.exports = {
     generarEtiquetaFulfillmentMarcaBlanca,
     sincronizarCanastosEstacionNodos,
     sincronizarNodosConCircuitoOperativoLamda,
+    liberarReservasVencidasNodos,
     sincronizarCambioSecuenciaDesdeLamda,
     notificarInicioPreparacionCarroNodo,
     cambiarEtapaCircuitoLamdaCanasto,

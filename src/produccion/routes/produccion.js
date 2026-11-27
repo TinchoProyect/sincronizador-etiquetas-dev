@@ -23,6 +23,7 @@ const {
     sincronizarManifestIngredientesB2B
 } = require('../services/desgloseIngredientesComercialService');
 const produccionPropiaCostosService = require('../services/produccionPropiaCostosService');
+const { construirCteReservasUnificadas } = require('../utils/reservasStockSqlHelper');
 
 // 🥣 Catálogo comercial dinámico de ingredientes resueltos recursivamente (sin pesos, porcentajes ni costos)
 router.get('/catalogo/ingredientes-comerciales', async (req, res) => {
@@ -5936,26 +5937,7 @@ router.get('/simulacion/inicializar', async (req, res) => {
             db.query(`SELECT receta_id, ingrediente_id, cantidad, fase_produccion FROM public.receta_ingredientes`),
             db.query(`SELECT receta_id, articulo_numero, cantidad FROM public.receta_articulos`),
             db.query(`
-                WITH reservas_crudas AS (
-                  SELECT
-                    COALESCE(src_res.articulo_numero, ba_res.articulo_id, a_res.numero, pd.articulo) AS articulo_numero,
-                    SUM(pd.cantidad) AS cantidad_reservada
-                  FROM public.presupuestos_detalles pd
-                  JOIN public.presupuestos p ON p.id = pd.id_presupuesto
-                  LEFT JOIN public.stock_real_consolidado src_res ON (src_res.articulo_numero = pd.articulo OR src_res.codigo_barras = pd.articulo)
-                  LEFT JOIN public.bunker_articulos ba_res ON (ba_res.articulo_id = pd.articulo OR ba_res.codigo_barras = pd.articulo)
-                  LEFT JOIN public.articulos a_res ON (a_res.numero = pd.articulo OR a_res.codigo_barras = pd.articulo)
-                  WHERE p.activo = true
-                    AND COALESCE(p.archivado, false) = false
-                    AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
-                    AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO', 'Facturado', 'Entregado', 'Conciliado', 'Retirado', 'Recibido', 'Administrativa NC', 'Muestra de Fraccionados', 'Orden de Retiro')
-                    AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Entregado', 'Finalizado', 'Cancelado')
-                    AND COALESCE(p.estado_logistico, '') NOT IN ('ENTREGADO', 'ENTREGADO_DEPOSITO')
-                    AND p.factura_id IS NULL
-                    AND p.id_factura_lomasoft IS NULL
-                    AND (p.comprobante_lomasoft IS NULL OR p.comprobante_lomasoft = '')
-                  GROUP BY COALESCE(src_res.articulo_numero, ba_res.articulo_id, a_res.numero, pd.articulo)
-                )
+                ${construirCteReservasUnificadas({ incluirReservasPadres: false, incluirStockPorBarras: false })}
                 SELECT 
                     ba.articulo_id, 
                     ba.descripcion, 

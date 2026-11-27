@@ -1,5 +1,6 @@
 console.log('🔍 [PRESUPUESTOS] Cargando controlador de presupuestos...');
 const { normalizarStockComercial, esSkuPremezclaInterna } = require('../../shared/stockComercialHelper');
+const { construirCteReservasUnificadas } = require('../../produccion/utils/reservasStockSqlHelper');
 
 let _jerarquiaB2BCache = { map: null, expiresAt: 0 };
 
@@ -1368,52 +1369,11 @@ const obtenerSugerenciasArticulos = async (req, res) => {
 
         let sql;
 
-        const cteReservas = `
-      WITH pedidos_activos AS (
-        SELECT pd.articulo, SUM(pd.cantidad) AS cant
-        FROM public.presupuestos_detalles pd
-        JOIN public.presupuestos p ON p.id = pd.id_presupuesto
-        WHERE p.activo = true
-          AND COALESCE(p.archivado, false) = false
-          AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
-          AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO', 'Sin Confirmar', 'Standby', 'STANDBY', 'Facturado', 'Entregado', 'Conciliado', 'Retirado', 'Recibido', 'Administrativa NC', 'Muestra de Fraccionados', 'Orden de Retiro')
-          AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Standby', 'STANDBY', 'Entregado', 'Finalizado', 'Cancelado')
-          AND COALESCE(p.estado_logistico, '') NOT IN ('ENTREGADO', 'ENTREGADO_DEPOSITO')
-          AND p.factura_id IS NULL
-          AND p.id_factura_lomasoft IS NULL
-          AND (p.comprobante_lomasoft IS NULL OR p.comprobante_lomasoft = '')
-        GROUP BY pd.articulo
-      ),
-      reservas_crudas AS MATERIALIZED (
-        SELECT
-          COALESCE(src1_r.articulo_numero, src2_r.articulo_numero, ba1_r.articulo_id, ba2_r.articulo_id, a1_r.numero, a2_r.numero, pa.articulo) AS articulo_numero,
-          SUM(pa.cant) AS cantidad_reservada
-        FROM pedidos_activos pa
-        LEFT JOIN public.stock_real_consolidado src1_r ON src1_r.articulo_numero = pa.articulo
-        LEFT JOIN public.stock_real_consolidado src2_r ON src2_r.codigo_barras = pa.articulo
-        LEFT JOIN public.bunker_articulos ba1_r ON ba1_r.articulo_id = pa.articulo
-        LEFT JOIN public.bunker_articulos ba2_r ON ba2_r.codigo_barras = pa.articulo
-        LEFT JOIN public.articulos a1_r ON a1_r.numero = pa.articulo
-        LEFT JOIN public.articulos a2_r ON a2_r.codigo_barras = pa.articulo
-        GROUP BY 1
-      ),
-      reservas_padres AS MATERIALIZED (
-        SELECT bp.pack_hijo_codigo, SUM(rc.cantidad_reservada * COALESCE(bp.pack_unidades, 1)) AS reservado_en_packs
-        FROM public.bunker_articulos bp
-        JOIN reservas_crudas rc ON rc.articulo_numero = bp.articulo_id
-        WHERE (bp.es_pack = true OR bp.pack_unidades > 1)
-          AND bp.pack_hijo_codigo IS NOT NULL
-        GROUP BY bp.pack_hijo_codigo
-      ),
-      stock_por_barras AS MATERIALIZED (
-        SELECT DISTINCT ON (codigo_barras)
-          codigo_barras, articulo_numero, descripcion, stock_consolidado,
-          kilos_unidad, es_pack, pack_unidades, pack_hijo_codigo
-        FROM public.stock_real_consolidado
-        WHERE codigo_barras IS NOT NULL AND codigo_barras <> ''
-        ORDER BY codigo_barras, articulo_numero
-      )
-        `;
+        const cteReservas = construirCteReservasUnificadas({
+            incluirStockPorBarras: true,
+            incluirReservasPadres: true,
+            materialized: true
+        });
 
         if (usarBunker) {
             p += 1;

@@ -10,6 +10,7 @@
 const path = require('path');
 const fs = require('fs');
 const { getSharedPool } = require('../../shared/pgPoolFactory');
+const { construirCteReservasUnificadas } = require('../utils/reservasStockSqlHelper');
 
 let puppeteer = null;
 try {
@@ -306,10 +307,23 @@ async function registrarCambiosLote({ client, cambios, origen_cambio = 'SIMULACI
     const mapArts = new Map();
     resArts.rows.forEach(a => mapArts.set(String(a.articulo_id).trim().toLowerCase(), a));
 
+    const artNumerosArr = [];
+    const codBarrasArr = [];
+    const descsArr = [];
+    const kilosArr = [];
+    const listaIdsArr = [];
+    const listaNombresArr = [];
+    const pAntArr = [];
+    const pNueArr = [];
+    const varMontoArr = [];
+    const varPctArr = [];
+    const cAntArr = [];
+    const cNueArr = [];
+
     for (const c of cambios) {
         const artNum = String(c.articulo_numero).trim();
         const artObj = mapArts.get(artNum.toLowerCase()) || {};
-        const listaId = parseInt(c.lista_id);
+        const listaId = parseInt(c.lista_id, 10);
         const listaNombre = mapListas.get(listaId) || `Lista ${listaId}`;
 
         const pAnt = parseFloat(c.precio_anterior) || 0;
@@ -320,48 +334,79 @@ async function registrarCambiosLote({ client, cambios, origen_cambio = 'SIMULACI
         const varMonto = pNue - pAnt;
         const varPct = pAnt > 0 ? ((varMonto / pAnt) * 100) : 0;
         const varCostoMonto = cNue - cAnt;
-        const varCostoPct = cAnt > 0 ? ((varCostoMonto / cAnt) * 100) : 0;
 
         if (Math.abs(varMonto) < 0.01 && Math.abs(varCostoMonto) < 0.01) {
             continue; // Evitar registrar variaciones nulas de 0 pesos
         }
 
-        await db.query(`
-            INSERT INTO public.bunker_historial_cambios_precios (
-                articulo_numero,
-                codigo_barras,
-                descripcion,
-                kilos_unidad,
-                lista_id,
-                lista_nombre,
-                precio_anterior,
-                precio_nuevo,
-                variacion_monto,
-                variacion_porcentaje,
-                costo_anterior,
-                costo_nuevo,
-                origen_cambio,
-                usuario
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        `, [
-            artNum,
-            artObj.codigo_barras || c.codigo_barras || null,
-            artObj.descripcion_generada || artObj.descripcion || c.descripcion || artNum,
-            parseFloat(artObj.kilos_unidad) || parseFloat(c.kilos_unidad) || 1,
-            listaId,
-            listaNombre,
-            pAnt,
-            pNue,
-            varMonto,
-            varPct,
-            cAnt,
-            cNue,
-            origen_cambio,
-            usuario
-        ]);
+        artNumerosArr.push(artNum);
+        codBarrasArr.push(artObj.codigo_barras || c.codigo_barras || null);
+        descsArr.push(artObj.descripcion_generada || artObj.descripcion || c.descripcion || artNum);
+        kilosArr.push(parseFloat(artObj.kilos_unidad) || parseFloat(c.kilos_unidad) || 1);
+        listaIdsArr.push(listaId);
+        listaNombresArr.push(listaNombre);
+        pAntArr.push(pAnt);
+        pNueArr.push(pNue);
+        varMontoArr.push(varMonto);
+        varPctArr.push(varPct);
+        cAntArr.push(cAnt);
+        cNueArr.push(cNue);
     }
 
-    return { insertados: cambios.length };
+    if (artNumerosArr.length === 0) {
+        return { insertados: 0, registros_insertados: [] };
+    }
+
+    const insRes = await db.query(`
+        INSERT INTO public.bunker_historial_cambios_precios (
+            articulo_numero,
+            codigo_barras,
+            descripcion,
+            kilos_unidad,
+            lista_id,
+            lista_nombre,
+            precio_anterior,
+            precio_nuevo,
+            variacion_monto,
+            variacion_porcentaje,
+            costo_anterior,
+            costo_nuevo,
+            origen_cambio,
+            usuario
+        )
+        SELECT
+            u.art_num, u.cod_barras, u.descr, u.kilos_u,
+            u.lista_id, u.lista_nombre,
+            u.p_ant, u.p_nue, u.var_monto, u.var_pct,
+            u.c_ant, u.c_nue,
+            $13::text, $14::text
+        FROM unnest(
+            $1::text[], $2::text[], $3::text[], $4::numeric[],
+            $5::int[], $6::text[],
+            $7::numeric[], $8::numeric[], $9::numeric[], $10::numeric[],
+            $11::numeric[], $12::numeric[]
+        ) AS u(art_num, cod_barras, descr, kilos_u, lista_id, lista_nombre, p_ant, p_nue, var_monto, var_pct, c_ant, c_nue)
+        RETURNING id, articulo_numero, lista_id, precio_anterior, precio_nuevo
+    `, [
+        artNumerosArr, codBarrasArr, descsArr, kilosArr,
+        listaIdsArr, listaNombresArr,
+        pAntArr, pNueArr, varMontoArr, varPctArr,
+        cAntArr, cNueArr,
+        origen_cambio, usuario
+    ]);
+
+    const registrosInsertados = insRes.rows.map(r => ({
+        id: Number(r.id),
+        articulo_numero: r.articulo_numero,
+        lista_id: Number(r.lista_id),
+        precio_anterior: Number(r.precio_anterior || 0),
+        precio_nuevo: Number(r.precio_nuevo || 0)
+    }));
+
+    return {
+        insertados: registrosInsertados.length,
+        registros_insertados: registrosInsertados
+    };
 }
 
 /**
@@ -922,25 +967,7 @@ function extraerPosicionesNormalizadas(propiedades_dinamicas) {
 async function cargarCatalogoDisponibilidadYAlternativas(db) {
     const [resStockCat, resPreciosListas] = await Promise.all([
         db.query(`
-            WITH reservas_crudas AS (
-              SELECT
-                COALESCE(src_res.articulo_numero, ba_res.articulo_id, pd.articulo) AS articulo_numero,
-                SUM(pd.cantidad) AS cantidad_reservada
-              FROM public.presupuestos_detalles pd
-              JOIN public.presupuestos p ON p.id = pd.id_presupuesto
-              LEFT JOIN public.stock_real_consolidado src_res ON (src_res.articulo_numero = pd.articulo OR src_res.codigo_barras = pd.articulo)
-              LEFT JOIN public.bunker_articulos ba_res ON (ba_res.articulo_id = pd.articulo)
-              WHERE p.activo = true
-                AND COALESCE(p.archivado, false) = false
-                AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
-                AND COALESCE(p.estado, '') NOT IN ('Anulado', 'Anulado por el Cliente', 'ANULADO', 'Facturado', 'Entregado', 'Conciliado', 'Retirado', 'Recibido', 'Administrativa NC', 'Muestra de Fraccionados', 'Orden de Retiro')
-                AND COALESCE(p.secuencia, 'Imprimir') NOT IN ('Entregado', 'Finalizado', 'Cancelado')
-                AND COALESCE(p.estado_logistico, '') NOT IN ('ENTREGADO', 'ENTREGADO_DEPOSITO')
-                AND p.factura_id IS NULL
-                AND p.id_factura_lomasoft IS NULL
-                AND (p.comprobante_lomasoft IS NULL OR p.comprobante_lomasoft = '')
-              GROUP BY COALESCE(src_res.articulo_numero, ba_res.articulo_id, pd.articulo)
-            ),
+            ${construirCteReservasUnificadas({ incluirReservasPadres: false, incluirStockPorBarras: false })},
             receta_mono AS (
               SELECT
                 r.articulo_numero,

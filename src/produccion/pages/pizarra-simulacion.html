@@ -1846,6 +1846,9 @@
 
     <!-- LADO DERECHO: ACCIONES COMPACTAS (ICONOS) -->
     <div class="header-actions" style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
+      <button class="btn btn-secondary" id="btn-radar-costos-header" onclick="window.abrirConsolaImpactoCascada && window.abrirConsolaImpactoCascada()" style="padding: 5px 10px; font-size: 0.76rem; height: 34px; border-radius: 6px; font-weight: 700; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;" title="Consola Única de Impacto en Cascada y Radar de Costos (LDN 1–8 + Nodos)">
+        🕸️ Radar <span id="radar-costos-badge" style="background: #475569; color: #f8fafc; padding: 1px 6px; border-radius: 10px; font-weight: 800; font-size: 0.70rem;">...</span>
+      </button>
       <button class="btn btn-secondary" id="btn-lotes-pendientes-header" style="display: none; padding: 5px 11px; font-size: 0.76rem; height: 34px; border-radius: 6px; font-weight: 700; white-space: nowrap; align-items: center; gap: 6px;" title="Lotes recibidos en depósito pendientes de vincular">
       </button>
       <button class="btn btn-secondary btn-icon-header" onclick="window.location.href='/pages/gestion-cambios-precios.html'" title="Gestión de Notificaciones y Variaciones a Clientes">
@@ -14092,6 +14095,7 @@
   <script src="/api/produccion/nodos/comunicaciones-modal.js?v=1.0.0"></script>
   <script src="/js/components/combosCotizadorPizarra.js?v=1.0.0"></script>
   <script src="/js/components/nodosCotizadorPizarra.js?v=3.0.2"></script>
+  <script src="/js/components/consolaImpactoCascada.js?v=1.0.0"></script>
 </body>
 
 </html>

@@ -26,6 +26,8 @@
  */
 
 const defaultPool = require('../config/database');
+const historialPreciosService = require('./historialPreciosService');
+const { triggerB2BSync } = require('../../actualizaPrecios/b2bAutoSyncTrigger');
 
 const normSku = (s) => String(s || '').trim().toUpperCase();
 const round2 = (n) => {
@@ -237,11 +239,13 @@ async function cargarSnapshotGrafo(runner = defaultPool) {
                    COALESCE(og.precio_base_nodo_snapshot, 0)::numeric(14,2) AS precio_base_nodo_snapshot,
                    COALESCE(og.margen_gestor_pct, 28)::numeric(8,2) AS margen_gestor_pct,
                    COALESCE(og.precio_venta_vecino, 0)::numeric(14,2) AS precio_venta_vecino,
+                   og.precio_venta_vecino_anterior::numeric(14,2) AS precio_venta_vecino_anterior,
                    COALESCE(og.ganancia_unitaria_gestor, 0)::numeric(14,2) AS ganancia_unitaria_gestor,
                    COALESCE(og.publicado_tienda, false) AS publicado_tienda,
                    COALESCE(og.alerta_cambio_costo, false) AS alerta_cambio_costo,
                    COALESCE(nm.alicuota_iva_margen_pct, 21)::numeric(6,2) AS alicuota_iva_margen_pct,
                    COALESCE(nm.alicuota_iibb_margen_pct, 4)::numeric(6,2) AS alicuota_iibb_margen_pct,
+                   nm.lista_precio_bunker_id,
                    nm.nombre_marca,
                    nm.slug
             FROM public.nodos_ofertas_gestor og
@@ -452,9 +456,13 @@ async function cargarSnapshotGrafo(runner = defaultPool) {
             precio_base_nodo_snapshot: Number(o.precio_base_nodo_snapshot || 0),
             margen_gestor_pct: Number(o.margen_gestor_pct || 0),
             precio_venta_vecino: Number(o.precio_venta_vecino || 0),
+            precio_venta_vecino_anterior: o.precio_venta_vecino_anterior !== null && o.precio_venta_vecino_anterior !== undefined
+                ? Number(o.precio_venta_vecino_anterior)
+                : null,
             ganancia_unitaria_gestor: Number(o.ganancia_unitaria_gestor || 0),
             alicuota_iva_margen_pct: Number(o.alicuota_iva_margen_pct ?? 21),
-            alicuota_iibb_margen_pct: Number(o.alicuota_iibb_margen_pct ?? 4)
+            alicuota_iibb_margen_pct: Number(o.alicuota_iibb_margen_pct ?? 4),
+            lista_precio_bunker_id: o.lista_precio_bunker_id ? Number(o.lista_precio_bunker_id) : null
         });
     }
 
@@ -761,11 +769,61 @@ function resolverSubgrafoImpactado(snapshot, disparador = {}) {
     };
 }
 
+function clasificarLdnArticulo(snapshot, skuKey) {
+    const k = normSku(skuKey);
+    const art = snapshot.artBySku.get(k);
+    if (!art) return 'LDN_1';
+    if (art.es_combo || snapshot.comboCompsPorSku.has(k)) return 'LDN_8';
+    const upAp = snapshot.upByApSku.get(k);
+    const upPre = snapshot.upByPreSku.get(k);
+    const upRef = upAp || upPre;
+    if (upRef) {
+        if (Number(upRef.linea_negocio) === 5) return 'LDN_5';
+        if (Number(upRef.linea_negocio) === 6) return 'LDN_6';
+        return 'LDN_4';
+    }
+    const rec = snapshot.recetaBySku.get(k);
+    if (rec && Array.isArray(rec.items) && rec.items.length > 0) {
+        const usaMix = rec.items.some(it => snapshot.mixesById.has(Number(it.ingrediente_id)));
+        const ingPuente = rec.items.some(it => {
+            const meta = snapshot.ingById.get(Number(it.ingrediente_id));
+            return meta && meta.rol_ingrediente === 'PUENTE_ELABORADO';
+        });
+        if (usaMix && !ingPuente) return 'LDN_3';
+        return 'LDN_2';
+    }
+    if (art.es_pack && art.pack_hijo_codigo) return 'LDN_2';
+    return 'LDN_1';
+}
+
+function normalizarSetLdnsFilter(ldnsSeleccionadas) {
+    if (!Array.isArray(ldnsSeleccionadas) || ldnsSeleccionadas.length === 0) return null;
+    const set = new Set();
+    for (const raw of ldnsSeleccionadas) {
+        const s = String(raw || '').trim().toUpperCase();
+        if (!s) continue;
+        if (/^[1-8]$/.test(s)) {
+            set.add(`LDN_${s}`);
+        } else if (/^LDN_[1-8]$/.test(s)) {
+            set.add(s);
+        }
+    }
+    return set.size > 0 ? set : null;
+}
+
+function normalizarSetListasFilter(listasSeleccionadas) {
+    if (!Array.isArray(listasSeleccionadas) || listasSeleccionadas.length === 0) return null;
+    const set = new Set(listasSeleccionadas.map(Number).filter(n => Number.isFinite(n) && n > 0));
+    return set.size > 0 ? set : null;
+}
+
 /**
  * Simula la cascada completa en modo sombra (100% solo lectura, 0 escrituras en DB).
+ * Soporta filtros selectivos por LDN, Listas B2B, protección de filas MANUAL y opt-in explícito.
  */
-async function simularCascada(runner = defaultPool, disparador = {}) {
+async function simularCascada(runner = defaultPool, disparador = {}, opciones = {}) {
     const q = runner || defaultPool;
+    const opts = (opciones && typeof opciones === 'object') ? opciones : {};
     const snapshot = await cargarSnapshotGrafo(q);
     const subgrafo = resolverSubgrafoImpactado(snapshot, disparador);
 
@@ -784,12 +842,30 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
                 ingredientes: [],
                 articulos: [],
                 listas_b2b: [],
+                listas_manuales_omitidas: [],
                 catalogo_nodos: [],
                 ofertas_nodos: []
             },
-            resumen: { total_cambios: 0 }
+            resumen: { total_cambios: 0, listas_manuales_omitidas: 0 }
         };
     }
+
+    const filtroLdns = normalizarSetLdnsFilter(opts.ldns_seleccionadas ?? disparador.ldns_seleccionadas);
+    const filtroListas = normalizarSetListasFilter(opts.listas_seleccionadas ?? disparador.listas_seleccionadas);
+    const incluirCanalNodos = opts.incluir_canal_nodos !== undefined
+        ? Boolean(opts.incluir_canal_nodos)
+        : (disparador.incluir_canal_nodos !== undefined ? Boolean(disparador.incluir_canal_nodos) : true);
+    const sobrescribirManuales = Boolean(opts.sobrescribir_manuales || disparador.sobrescribir_manuales);
+    const incluirManualesSet = new Set(
+        (Array.isArray(opts.incluir_manuales_ids) ? opts.incluir_manuales_ids : (Array.isArray(disparador.incluir_manuales_ids) ? disparador.incluir_manuales_ids : []))
+            .map(Number)
+            .filter(n => n > 0)
+    );
+
+    const skuPasaFiltroLdn = (skuK) => {
+        if (!filtroLdns) return true;
+        return filtroLdns.has(clasificarLdnArticulo(snapshot, skuK));
+    };
 
     const ingCost = new Map();
     for (const [id, ing] of snapshot.ingById.entries()) {
@@ -1135,11 +1211,16 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
         }
     }
 
-    // 6. Listas B2B (public.bunker_lista_articulos)
+    // 6. Listas B2B (public.bunker_lista_articulos) — protección explícita de filas MANUAL
     const cambiosListas = [];
+    const listasManualesOmitidas = [];
+    const precioNuevoPorListaYSku = new Map();
+
     for (const skuKey of subgrafo.artImpactados) {
         const art = snapshot.artBySku.get(skuKey);
         if (!art) continue;
+        const ldnSku = clasificarLdnArticulo(snapshot, skuKey);
+        const ldnPermitida = !filtroLdns || filtroLdns.has(ldnSku);
         const nuevoCostoBulto = artCost.get(skuKey) ?? art.costo_base;
         const nuevoCostoUnrounded = artUnrounded.get(skuKey) ?? nuevoCostoBulto;
         const viejoCostoBulto = art.costo_base;
@@ -1150,7 +1231,6 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
 
         const laRows = snapshot.listaArticulosBySku.get(skuKey) || [];
         for (const la of laRows) {
-            if (String(la.modo_calculo || 'AUTOMATIC').toUpperCase() === 'MANUAL') continue;
             if (bloqueadosCostoCero.has(skuKey)) continue;
             const insTotal = resolverInsumosLista(snapshot, la, artCost);
 
@@ -1159,113 +1239,182 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
             if (!subgrafo.full && cambioBaseArt && la.costo_base_sobrescrito !== null) {
                 overrideBaseKg = baseKiloSobNew;
             }
-            const canalLista = snapshot.listaById.get(la.lista_id)?.canal_comercial || 'MAYORISTA';
-            const resLista = calcularPrecioB2BLista(la, kilos, baseKiloCalc, insTotal, overrideBaseKg, {
+            const listaMeta = snapshot.listaById.get(la.lista_id);
+            const canalLista = listaMeta?.canal_comercial || 'MAYORISTA';
+            const esManual = String(la.modo_calculo || 'AUTOMATIC').toUpperCase() === 'MANUAL';
+
+            // Calcular fórmula informativa incluso en filas MANUAL (para advertencia explícita)
+            const laForCalc = esManual ? { ...la, modo_calculo: 'AUTOMATIC' } : la;
+            const resFormula = calcularPrecioB2BLista(laForCalc, kilos, baseKiloCalc, insTotal, overrideBaseKg, {
                 porcentajeIvaArticulo: art.porcentaje_iva,
                 canalComercial: canalLista
             });
             const nuevoSob = overrideBaseKg !== null ? baseKiloSobNew : la.costo_base_sobrescrito;
             const precioBdCmp = String(canalLista).toUpperCase() === 'NODOS' ? Math.round(la.precio_final) : round2(la.precio_final);
-            const diffPrecio = Math.abs(resLista.precio_final - precioBdCmp);
+            const diffPrecio = Math.abs(resFormula.precio_final - precioBdCmp);
+
+            precioNuevoPorListaYSku.set(
+                `${la.lista_id}::${skuKey}`,
+                esManual && !(sobrescribirManuales || incluirManualesSet.has(la.id))
+                    ? precioBdCmp
+                    : resFormula.precio_final
+            );
+
+            if (!ldnPermitida) continue;
+            if (filtroListas && !filtroListas.has(la.lista_id)) continue;
+
+            if (esManual && !(sobrescribirManuales || incluirManualesSet.has(la.id))) {
+                if (diffPrecio > 0.009 || !subgrafo.full) {
+                    listasManualesOmitidas.push({
+                        lista_articulo_id: la.id,
+                        lista_id: la.lista_id,
+                        lista_nombre: listaMeta?.nombre || `Lista ${la.lista_id}`,
+                        canal_comercial: canalLista,
+                        ldn: ldnSku,
+                        articulo_numero: la.articulo_numero,
+                        modo_calculo: 'MANUAL',
+                        disponible: Boolean(la.disponible),
+                        precio_actual: precioBdCmp,
+                        precio_sugerido_formula: resFormula.precio_final,
+                        diff_teorica: round2(resFormula.precio_final - precioBdCmp)
+                    });
+                }
+                continue;
+            }
+
             if (subgrafo.full || diffPrecio > 0.009 || (nuevoSob !== la.costo_base_sobrescrito)) {
                 cambiosListas.push({
                     lista_articulo_id: la.id,
                     lista_id: la.lista_id,
+                    lista_nombre: listaMeta?.nombre || `Lista ${la.lista_id}`,
+                    canal_comercial: canalLista,
+                    ldn: ldnSku,
                     articulo_numero: la.articulo_numero,
+                    kilos_unidad: art.kilos_unidad,
+                    costo_anterior: viejoCostoBulto,
+                    costo_nuevo: nuevoCostoBulto,
                     costo_base_sobrescrito_actual: la.costo_base_sobrescrito,
                     costo_base_sobrescrito_nuevo: nuevoSob,
                     precio_actual: precioBdCmp,
-                    precio_nuevo: resLista.precio_final,
-                    diff_precio: round2(resLista.precio_final - precioBdCmp),
-                    insumos_total: insTotal
+                    precio_nuevo: resFormula.precio_final,
+                    diff_precio: round2(resFormula.precio_final - precioBdCmp),
+                    insumos_total: insTotal,
+                    era_manual_sobrescrito: esManual
                 });
             }
         }
     }
 
-    // 7. Canal Nodos Escalón 1 (nodos_articulos_catalogo) y Escalón 2 (nodos_ofertas_gestor)
+    const listasNodosIds = Array.from(snapshot.listaById.values())
+        .filter(l => String(l.canal_comercial || '').toUpperCase() === 'NODOS')
+        .map(l => Number(l.id))
+        .sort((a, b) => a - b);
+    const defaultNodosListId = listasNodosIds[0] || 8;
+
+    // 7. Canal Nodos Escalón 1 (nodos_articulos_catalogo) y Escalón 2 (nodos_ofertas_gestor — multi-lista NODOS)
     const cambiosCatalogoNodos = [];
     const cambiosOfertasNodos = [];
-    for (const cat of snapshot.catalogoBySku.values()) {
-        const skuKey = cat.sku_key;
-        if (!subgrafo.full && !subgrafo.artImpactados.has(skuKey) && !(cat.ingrediente_origen_id && subgrafo.ingImpactados.has(Number(cat.ingrediente_origen_id)))) {
-            continue;
-        }
-        if (bloqueadosCostoCero.has(skuKey)) continue;
-
-        let nuevoCostoKg = cat.costo_insumo_kg;
-        if (cat.ingrediente_origen_id && ingCost.has(Number(cat.ingrediente_origen_id))) {
-            const ck = ingCost.get(Number(cat.ingrediente_origen_id));
-            if (ck > 0) nuevoCostoKg = round2(ck);
-        } else if (artCost.has(skuKey)) {
-            nuevoCostoKg = round2((artCost.get(skuKey) - cat.costo_envase_aplicado) / Math.max(0.001, cat.kilos_unidad));
-        }
-        let nuevoCostoEnvase = cat.costo_envase_aplicado;
-        if (cat.insumo_envase_id && ingCost.has(Number(cat.insumo_envase_id))) {
-            const envId = Number(cat.insumo_envase_id);
-            const cEnv = ingCost.get(envId);
-            const origEnvCost = snapshot.ingById.get(envId)?.costo_patron ?? 0;
-            const cantEnv = Math.max(0, Number(cat.cantidad_envases_unidad || 1));
-            const envaseExtraPrevio = Math.max(0, round2(cat.costo_envase_aplicado - (origEnvCost * cantEnv)));
-            if (cEnv > 0) {
-                nuevoCostoEnvase = round2((cEnv * cantEnv) + envaseExtraPrevio);
+    if (incluirCanalNodos) {
+        for (const cat of snapshot.catalogoBySku.values()) {
+            const skuKey = cat.sku_key;
+            if (!subgrafo.full && !subgrafo.artImpactados.has(skuKey) && !(cat.ingrediente_origen_id && subgrafo.ingImpactados.has(Number(cat.ingrediente_origen_id)))) {
+                continue;
             }
-        }
-        const nuevoCostoFracc = round2(nuevoCostoKg * cat.kilos_unidad);
-        const materiaYEnvase = round2(nuevoCostoFracc + nuevoCostoEnvase);
-        const nuevoCostoPuro = round2(materiaYEnvase + cat.costo_mano_obra_aplicado);
-        const gananciaLamda = round2(materiaYEnvase * (cat.margen_lamda_pct / 100));
-        const nuevoBaseNeto = round2(materiaYEnvase + gananciaLamda + cat.costo_mano_obra_aplicado);
-        const nuevoBaseFinal = Math.round(nuevoBaseNeto * (1 + (cat.iva_pct / 100)));
+            if (!skuPasaFiltroLdn(skuKey)) continue;
+            if (bloqueadosCostoCero.has(skuKey)) continue;
 
-        const cambioCat = Math.abs(nuevoBaseFinal - cat.precio_base_nodo_final) > 0.009
-            || Math.abs(nuevoCostoPuro - cat.costo_puro_total) > 0.009;
+            const ldnCat = clasificarLdnArticulo(snapshot, skuKey);
+            let nuevoCostoKg = cat.costo_insumo_kg;
+            if (cat.ingrediente_origen_id && ingCost.has(Number(cat.ingrediente_origen_id))) {
+                const ck = ingCost.get(Number(cat.ingrediente_origen_id));
+                if (ck > 0) nuevoCostoKg = round2(ck);
+            } else if (artCost.has(skuKey)) {
+                nuevoCostoKg = round2((artCost.get(skuKey) - cat.costo_envase_aplicado) / Math.max(0.001, cat.kilos_unidad));
+            }
+            let nuevoCostoEnvase = cat.costo_envase_aplicado;
+            if (cat.insumo_envase_id && ingCost.has(Number(cat.insumo_envase_id))) {
+                const envId = Number(cat.insumo_envase_id);
+                const cEnv = ingCost.get(envId);
+                const origEnvCost = snapshot.ingById.get(envId)?.costo_patron ?? 0;
+                const cantEnv = Math.max(0, Number(cat.cantidad_envases_unidad || 1));
+                const envaseExtraPrevio = Math.max(0, round2(cat.costo_envase_aplicado - (origEnvCost * cantEnv)));
+                if (cEnv > 0) {
+                    nuevoCostoEnvase = round2((cEnv * cantEnv) + envaseExtraPrevio);
+                }
+            }
+            const nuevoCostoFracc = round2(nuevoCostoKg * cat.kilos_unidad);
+            const materiaYEnvase = round2(nuevoCostoFracc + nuevoCostoEnvase);
+            const nuevoCostoPuro = round2(materiaYEnvase + cat.costo_mano_obra_aplicado);
+            const gananciaLamda = round2(materiaYEnvase * (cat.margen_lamda_pct / 100));
+            const nuevoBaseNeto = round2(materiaYEnvase + gananciaLamda + cat.costo_mano_obra_aplicado);
+            const nuevoBaseFinal = Math.round(nuevoBaseNeto * (1 + (cat.iva_pct / 100)));
 
-        if (subgrafo.full || cambioCat) {
-            cambiosCatalogoNodos.push({
-                catalogo_id: cat.id,
-                sku_nodo: cat.sku_nodo,
-                costo_insumo_kg_actual: cat.costo_insumo_kg,
-                costo_insumo_kg_nuevo: nuevoCostoKg,
-                costo_insumo_fraccion_nuevo: nuevoCostoFracc,
-                costo_envase_aplicado_nuevo: nuevoCostoEnvase,
-                costo_puro_total_actual: cat.costo_puro_total,
-                costo_puro_total_nuevo: nuevoCostoPuro,
-                precio_base_nodo_neto_actual: cat.costo_base_nodo_neto,
-                precio_base_nodo_neto_nuevo: nuevoBaseNeto,
-                precio_base_nodo_final_actual: cat.precio_base_nodo_final,
-                precio_base_nodo_final_nuevo: nuevoBaseFinal
-            });
-        }
+            const cambioCat = Math.abs(nuevoBaseFinal - cat.precio_base_nodo_final) > 0.009
+                || Math.abs(nuevoCostoPuro - cat.costo_puro_total) > 0.009;
 
-        const ofertas = snapshot.ofertasPorCatalogoId.get(cat.id) || [];
-        for (const ofe of ofertas) {
-            const esc2 = calcularEscalon2OfertaGestor(
-                nuevoBaseFinal,
-                ofe.margen_gestor_pct,
-                ofe.alicuota_iva_margen_pct,
-                ofe.alicuota_iibb_margen_pct
-            );
-            const diffOferta = Math.abs(esc2.precio_venta_vecino - ofe.precio_venta_vecino) > 0.009
-                || Math.abs(esc2.ganancia_unitaria_gestor - ofe.ganancia_unitaria_gestor) > 0.009
-                || Math.abs(nuevoBaseFinal - ofe.precio_base_nodo_snapshot) > 0.009;
-            if (subgrafo.full || cambioCat || diffOferta) {
-                cambiosOfertasNodos.push({
-                    oferta_id: ofe.id,
-                    nodo_id: ofe.nodo_id,
-                    nodo_nombre: ofe.nombre_marca,
+            if (subgrafo.full || cambioCat) {
+                cambiosCatalogoNodos.push({
                     catalogo_id: cat.id,
                     sku_nodo: cat.sku_nodo,
-                    precio_base_nodo_snapshot_actual: ofe.precio_base_nodo_snapshot,
-                    precio_base_nodo_snapshot_nuevo: nuevoBaseFinal,
-                    margen_gestor_pct_preservado: esc2.margen_gestor_pct,
-                    precio_venta_vecino_actual: ofe.precio_venta_vecino,
-                    precio_venta_vecino_nuevo: esc2.precio_venta_vecino,
-                    ganancia_unitaria_gestor_actual: ofe.ganancia_unitaria_gestor,
-                    ganancia_unitaria_gestor_nuevo: esc2.ganancia_unitaria_gestor,
-                    retencion_fiscal_unitaria_nueva: esc2.retencion_fiscal_unitaria,
-                    alerta_cambio_costo: cambioCat
+                    ldn: ldnCat,
+                    costo_insumo_kg_actual: cat.costo_insumo_kg,
+                    costo_insumo_kg_nuevo: nuevoCostoKg,
+                    costo_insumo_fraccion_nuevo: nuevoCostoFracc,
+                    costo_envase_aplicado_nuevo: nuevoCostoEnvase,
+                    costo_puro_total_actual: cat.costo_puro_total,
+                    costo_puro_total_nuevo: nuevoCostoPuro,
+                    precio_base_nodo_neto_actual: cat.costo_base_nodo_neto,
+                    precio_base_nodo_neto_nuevo: nuevoBaseNeto,
+                    precio_base_nodo_final_actual: cat.precio_base_nodo_final,
+                    precio_base_nodo_final_nuevo: nuevoBaseFinal
                 });
+            }
+
+            const ofertas = snapshot.ofertasPorCatalogoId.get(cat.id) || [];
+            for (const ofe of ofertas) {
+                if (filtroListas && ofe.lista_precio_bunker_id && !filtroListas.has(ofe.lista_precio_bunker_id) && !filtroListas.has(defaultNodosListId)) {
+                    continue;
+                }
+                const usaListaDiferenciadaNodo = Boolean(
+                    ofe.lista_precio_bunker_id && Number(ofe.lista_precio_bunker_id) !== Number(defaultNodosListId)
+                );
+                const precioListaNodoEspecifica = usaListaDiferenciadaNodo
+                    ? precioNuevoPorListaYSku.get(`${ofe.lista_precio_bunker_id}::${skuKey}`)
+                    : undefined;
+                const baseEscalon1Nodo = (precioListaNodoEspecifica !== undefined && precioListaNodoEspecifica > 0)
+                    ? Math.round(precioListaNodoEspecifica)
+                    : nuevoBaseFinal;
+
+                const esc2 = calcularEscalon2OfertaGestor(
+                    baseEscalon1Nodo,
+                    ofe.margen_gestor_pct,
+                    ofe.alicuota_iva_margen_pct,
+                    ofe.alicuota_iibb_margen_pct
+                );
+                const cambioBaseOferta = Math.abs(baseEscalon1Nodo - ofe.precio_base_nodo_snapshot) > 0.009 || cambioCat;
+                const diffOferta = Math.abs(esc2.precio_venta_vecino - ofe.precio_venta_vecino) > 0.009
+                    || Math.abs(esc2.ganancia_unitaria_gestor - ofe.ganancia_unitaria_gestor) > 0.009
+                    || cambioBaseOferta;
+                if (subgrafo.full || cambioBaseOferta || diffOferta) {
+                    cambiosOfertasNodos.push({
+                        oferta_id: ofe.id,
+                        nodo_id: ofe.nodo_id,
+                        nodo_nombre: ofe.nombre_marca,
+                        lista_precio_bunker_id: ofe.lista_precio_bunker_id,
+                        catalogo_id: cat.id,
+                        sku_nodo: cat.sku_nodo,
+                        ldn: ldnCat,
+                        precio_base_nodo_snapshot_actual: ofe.precio_base_nodo_snapshot,
+                        precio_base_nodo_snapshot_nuevo: baseEscalon1Nodo,
+                        margen_gestor_pct_preservado: esc2.margen_gestor_pct,
+                        precio_venta_vecino_actual: ofe.precio_venta_vecino,
+                        precio_venta_vecino_nuevo: esc2.precio_venta_vecino,
+                        ganancia_unitaria_gestor_actual: ofe.ganancia_unitaria_gestor,
+                        ganancia_unitaria_gestor_nuevo: esc2.ganancia_unitaria_gestor,
+                        retencion_fiscal_unitaria_nueva: esc2.retencion_fiscal_unitaria,
+                        alerta_cambio_costo: cambioBaseOferta
+                    });
+                }
             }
         }
     }
@@ -1290,9 +1439,12 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
     for (const [skuK, nuevoBase] of artCost.entries()) {
         const origArt = snapshot.artBySku.get(skuK);
         if (!origArt) continue;
+        const ldnArt = clasificarLdnArticulo(snapshot, skuK);
+        if (filtroLdns && !filtroLdns.has(ldnArt)) continue;
         if (Math.abs(nuevoBase - origArt.costo_base) > 0.009) {
             cambiosArticulos.push({
                 articulo_id: origArt.articulo_id,
+                ldn: ldnArt,
                 kilos_unidad: origArt.kilos_unidad,
                 costo_base_actual: origArt.costo_base,
                 costo_base_nuevo: round2(nuevoBase),
@@ -1301,31 +1453,45 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
         }
     }
 
+    const listasB2BFinal = subgrafo.full
+        ? cambiosListas.filter(l => Math.abs(l.diff_precio) > 0.009)
+        : cambiosListas;
+    const catNodosFinal = subgrafo.full
+        ? cambiosCatalogoNodos.filter(c => Math.abs(c.precio_base_nodo_final_nuevo - c.precio_base_nodo_final_actual) > 0.009)
+        : cambiosCatalogoNodos;
+    const ofeNodosFinal = subgrafo.full
+        ? cambiosOfertasNodos.filter(o => Math.abs(o.precio_venta_vecino_nuevo - o.precio_venta_vecino_actual) > 0.009)
+        : cambiosOfertasNodos;
+
     return {
         ok: true,
         requiere_seleccion_calidad: false,
         calidades_candidatas: [],
         disparador,
+        filtros_aplicados: {
+            ldns_seleccionadas: filtroLdns ? Array.from(filtroLdns) : null,
+            listas_seleccionadas: filtroListas ? Array.from(filtroListas) : null,
+            incluir_canal_nodos: incluirCanalNodos,
+            sobrescribir_manuales: sobrescribirManuales
+        },
         solo_lectura: true,
         recetas_huerfanas_omitidas: snapshot.recetasHuerfanas.length,
         alertas_costo_cero: alertasCostoCero,
         cambios: {
             ingredientes: cambiosIngredientes,
             articulos: cambiosArticulos,
-            listas_b2b: subgrafo.full ? cambiosListas.filter(l => Math.abs(l.diff_precio) > 0.009) : cambiosListas,
-            catalogo_nodos: subgrafo.full
-                ? cambiosCatalogoNodos.filter(c => Math.abs(c.precio_base_nodo_final_nuevo - c.precio_base_nodo_final_actual) > 0.009)
-                : cambiosCatalogoNodos,
-            ofertas_nodos: subgrafo.full
-                ? cambiosOfertasNodos.filter(o => Math.abs(o.precio_venta_vecino_nuevo - o.precio_venta_vecino_actual) > 0.009)
-                : cambiosOfertasNodos
+            listas_b2b: listasB2BFinal,
+            listas_manuales_omitidas: listasManualesOmitidas,
+            catalogo_nodos: catNodosFinal,
+            ofertas_nodos: ofeNodosFinal
         },
         resumen: {
             ingredientes_modificados: cambiosIngredientes.length,
             articulos_modificados: cambiosArticulos.length,
-            listas_modificadas: (subgrafo.full ? cambiosListas.filter(l => Math.abs(l.diff_precio) > 0.009) : cambiosListas).length,
-            catalogo_nodos_modificados: cambiosCatalogoNodos.length,
-            ofertas_nodos_modificadas: cambiosOfertasNodos.length,
+            listas_modificadas: listasB2BFinal.length,
+            listas_manuales_omitidas: listasManualesOmitidas.length,
+            catalogo_nodos_modificados: catNodosFinal.length,
+            ofertas_nodos_modificadas: ofeNodosFinal.length,
             alertas_costo_cero: alertasCostoCero.length
         }
     };
@@ -1333,20 +1499,29 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
 
 /**
  * Aplica en una transacción atómica una simulación previamente calculada (o la calcula y aplica).
- * Respeta margen_gestor_pct y recalcula precio_venta_vecino / ganancia_unitaria_gestor con alerta_cambio_costo = true.
+ * - Respeta margen_gestor_pct y recalcula precio_venta_vecino / ganancia_unitaria_gestor con alerta_cambio_costo = true
+ *   y precio_venta_vecino_anterior preservado.
+ * - Protege filas MANUAL salvo opt-in explícito.
+ * - Registra trazabilidad Mayorista B2B en bunker_historial_cambios_precios y bunker_notificaciones_cambios_clientes.
+ * - Dispara triggerB2BSync('precios') post-commit en producción real (protegido en laboratorio).
  */
-async function aplicarCascada(runner, disparadorOSimulacion = {}) {
+async function aplicarCascada(runner, disparadorOSimulacion = {}, opciones = {}) {
     const isClient = runner && typeof runner.release === 'function';
     const pool = runner || defaultPool;
     const ownClient = !isClient;
     const client = ownClient ? await pool.connect() : runner;
+    const opts = (opciones && typeof opciones === 'object') ? opciones : {};
+
+    let cambiosMayoristasRegistrados = 0;
+    let notificacionesClientesCreadas = 0;
+    let sim;
 
     try {
         if (ownClient) await client.query('BEGIN');
 
-        const sim = disparadorOSimulacion && disparadorOSimulacion.cambios
+        sim = disparadorOSimulacion && disparadorOSimulacion.cambios
             ? disparadorOSimulacion
-            : await simularCascada(client, disparadorOSimulacion);
+            : await simularCascada(client, disparadorOSimulacion, opts);
 
         if (sim.requiere_seleccion_calidad) {
             const err = new Error(sim.mensaje || 'Selección explícita de calidad requerida antes de aplicar cascada.');
@@ -1355,87 +1530,236 @@ async function aplicarCascada(runner, disparadorOSimulacion = {}) {
             throw err;
         }
 
-        for (const ingC of sim.cambios.ingredientes || []) {
+        const ingCambios = sim.cambios.ingredientes || [];
+        if (ingCambios.length > 0) {
             await client.query(
-                `UPDATE public.ingredientes SET costo_patron = $2 WHERE id = $1`,
-                [ingC.ingrediente_id, ingC.costo_nuevo]
-            );
-        }
-
-        for (const artC of sim.cambios.articulos || []) {
-            await client.query(
-                `UPDATE public.bunker_articulos SET costo_base = $2, updated_at = NOW() WHERE UPPER(BTRIM(articulo_id)) = UPPER(BTRIM($1))`,
-                [artC.articulo_id, artC.costo_base_nuevo]
-            );
-        }
-
-        for (const laC of sim.cambios.listas_b2b || []) {
-            await client.query(
-                `UPDATE public.bunker_lista_articulos
-                 SET costo_base_sobrescrito = $2,
-                     precio_final = $3,
-                     updated_at = NOW()
-                 WHERE id = $1`,
-                [laC.lista_articulo_id, laC.costo_base_sobrescrito_nuevo, laC.precio_nuevo]
-            );
-        }
-
-        for (const catC of sim.cambios.catalogo_nodos || []) {
-            await client.query(
-                `UPDATE public.nodos_articulos_catalogo
-                 SET costo_insumo_kg = $2,
-                     costo_insumo_fraccion = $3,
-                     costo_envase_aplicado = $4,
-                     costo_puro_total = $5,
-                     precio_base_nodo_neto = $6,
-                     precio_base_nodo_final = $7,
-                     updated_at = NOW()
-                 WHERE id = $1`,
+                `UPDATE public.ingredientes AS i
+                 SET costo_patron = u.costo_nuevo
+                 FROM unnest($1::int[], $2::numeric[]) AS u(id, costo_nuevo)
+                 WHERE i.id = u.id`,
                 [
-                    catC.catalogo_id,
-                    catC.costo_insumo_kg_nuevo,
-                    catC.costo_insumo_fraccion_nuevo,
-                    catC.costo_envase_aplicado_nuevo,
-                    catC.costo_puro_total_nuevo,
-                    catC.precio_base_nodo_neto_nuevo,
-                    catC.precio_base_nodo_final_nuevo
+                    ingCambios.map(x => Number(x.ingrediente_id)),
+                    ingCambios.map(x => Number(x.costo_nuevo))
                 ]
             );
         }
 
-        for (const ofeC of sim.cambios.ofertas_nodos || []) {
+        const artCambios = sim.cambios.articulos || [];
+        if (artCambios.length > 0) {
             await client.query(
-                `UPDATE public.nodos_ofertas_gestor
-                 SET precio_base_nodo_snapshot = $2,
-                     precio_venta_vecino = $3,
-                     ganancia_unitaria_gestor = $4,
-                     alerta_cambio_costo = CASE WHEN $5::boolean THEN true ELSE alerta_cambio_costo END,
+                `UPDATE public.bunker_articulos AS ba
+                 SET costo_base = u.costo_base_nuevo,
                      updated_at = NOW()
-                 WHERE id = $1`,
+                 FROM unnest($1::text[], $2::numeric[]) AS u(art_id, costo_base_nuevo)
+                 WHERE UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(u.art_id))`,
                 [
-                    ofeC.oferta_id,
-                    ofeC.precio_base_nodo_snapshot_nuevo,
-                    ofeC.precio_venta_vecino_nuevo,
-                    ofeC.ganancia_unitaria_gestor_nuevo,
-                    Boolean(ofeC.alerta_cambio_costo)
+                    artCambios.map(x => String(x.articulo_id)),
+                    artCambios.map(x => Number(x.costo_base_nuevo))
+                ]
+            );
+        }
+
+        const incluirManualesOptIn = new Set(
+            (Array.isArray(opts.incluir_manuales_ids) ? opts.incluir_manuales_ids : []).map(Number).filter(n => n > 0)
+        );
+        const permitirManualesTx = Boolean(opts.sobrescribir_manuales);
+
+        const listasMayoristasParaHistorial = [];
+        const laCambios = sim.cambios.listas_b2b || [];
+        if (laCambios.length > 0) {
+            const updLaRes = await client.query(
+                `UPDATE public.bunker_lista_articulos AS bla
+                 SET costo_base_sobrescrito = u.costo_sob,
+                     precio_final = u.precio_nuevo,
+                     updated_at = NOW()
+                 FROM unnest($1::int[], $2::numeric[], $3::numeric[], $4::boolean[]) AS u(id, costo_sob, precio_nuevo, puede_manual)
+                 WHERE bla.id = u.id
+                   AND (u.puede_manual = true OR UPPER(COALESCE(bla.modo_calculo, 'AUTOMATIC')) <> 'MANUAL')
+                 RETURNING bla.id`,
+                [
+                    laCambios.map(x => Number(x.lista_articulo_id)),
+                    laCambios.map(x => x.costo_base_sobrescrito_nuevo !== null && x.costo_base_sobrescrito_nuevo !== undefined ? Number(x.costo_base_sobrescrito_nuevo) : null),
+                    laCambios.map(x => Number(x.precio_nuevo)),
+                    laCambios.map(x => Boolean(permitirManualesTx || incluirManualesOptIn.has(Number(x.lista_articulo_id))))
+                ]
+            );
+            const updatedLaIds = new Set(updLaRes.rows.map(r => Number(r.id)));
+            for (const laC of laCambios) {
+                if (updatedLaIds.has(Number(laC.lista_articulo_id)) && String(laC.canal_comercial || 'MAYORISTA').toUpperCase() !== 'NODOS') {
+                    const pAnt = Number(laC.precio_actual || 0);
+                    const pNue = Number(laC.precio_nuevo || 0);
+                    const cAnt = Number(laC.costo_anterior || 0);
+                    const cNue = Number(laC.costo_nuevo || 0);
+                    if (Math.abs(pNue - pAnt) >= 0.01 || Math.abs(cNue - cAnt) >= 0.01) {
+                        listasMayoristasParaHistorial.push({
+                            articulo_numero: laC.articulo_numero,
+                            lista_id: laC.lista_id,
+                            precio_anterior: pAnt,
+                            precio_nuevo: pNue,
+                            costo_anterior: cAnt,
+                            costo_nuevo: cNue,
+                            kilos_unidad: laC.kilos_unidad
+                        });
+                    }
+                }
+            }
+        }
+
+        if (listasMayoristasParaHistorial.length > 0) {
+            const resHist = await historialPreciosService.registrarCambiosLote({
+                client,
+                cambios: listasMayoristasParaHistorial,
+                origen_cambio: opts.origen_cambio || 'CASCADA_COSTOS',
+                usuario: opts.usuario || 'OPERADOR'
+            });
+            cambiosMayoristasRegistrados = Number(resHist?.insertados || 0);
+
+            const regsHist = Array.isArray(resHist?.registros_insertados) ? resHist.registros_insertados : [];
+            if (regsHist.length > 0) {
+                const listaIdsAfectados = Array.from(new Set(regsHist.map(r => Number(r.lista_id)).filter(n => n > 0)));
+                const cliRes = await client.query(
+                    `SELECT DISTINCT
+                            bcl.bunker_lista_precio_id AS lista_id,
+                            COALESCE(NULLIF(regexp_replace(COALESCE(bc.lomas_soft_id, ''), '\\D', '', 'g'), '')::int, bc.id) AS cliente_id,
+                            bc.codigo_bunker_cliente,
+                            COALESCE(NULLIF(BTRIM(bc.razon_social), ''), NULLIF(BTRIM(bc.cliente_nombre), ''), bc.codigo_bunker_cliente) AS cliente_nombre
+                     FROM public.bunker_cliente_listas_precios bcl
+                     JOIN public.bunker_clientes bc ON bc.id = bcl.bunker_cliente_id
+                     WHERE bcl.bunker_lista_precio_id = ANY($1::int[])
+                       AND COALESCE(bc.codigo_bunker_cliente, '') NOT LIKE 'CB-NODO-%'`,
+                    [listaIdsAfectados]
+                );
+
+                const clisPorLista = new Map();
+                for (const c of cliRes.rows) {
+                    const lid = Number(c.lista_id);
+                    if (!clisPorLista.has(lid)) clisPorLista.set(lid, []);
+                    clisPorLista.get(lid).push(c);
+                }
+
+                const nHistIds = [];
+                const nArtNums = [];
+                const nCliIds = [];
+                const nCodBunks = [];
+                const nCliNombres = [];
+                const nNotas = [];
+                const seenNotifPairs = new Set();
+
+                for (const reg of regsHist) {
+                    const clientesLista = clisPorLista.get(Number(reg.lista_id)) || [];
+                    const notaTxt = `Pendiente de aviso automático por cascada de costos ($${Number(reg.precio_anterior).toFixed(2)} → $${Number(reg.precio_nuevo).toFixed(2)})`;
+                    for (const cli of clientesLista) {
+                        const cid = Number(cli.cliente_id);
+                        const pairKey = `${reg.id}:${cid}`;
+                        if (seenNotifPairs.has(pairKey)) continue;
+                        seenNotifPairs.add(pairKey);
+                        nHistIds.push(reg.id);
+                        nArtNums.push(reg.articulo_numero);
+                        nCliIds.push(cid);
+                        nCodBunks.push(cli.codigo_bunker_cliente || null);
+                        nCliNombres.push(cli.cliente_nombre || null);
+                        nNotas.push(notaTxt);
+                    }
+                }
+
+                if (nHistIds.length > 0) {
+                    const insNotifRes = await client.query(
+                        `INSERT INTO public.bunker_notificaciones_cambios_clientes (
+                            historial_cambio_id, articulo_numero, cliente_id, codigo_bunker_cliente,
+                            cliente_nombre, estado, canal, notificado_at, notas
+                         )
+                         SELECT u.hist_id, u.art_num, u.cli_id, u.cod_bunker, u.cli_nombre, 'PENDIENTE', NULL, NULL, u.notas
+                         FROM unnest($1::int[], $2::text[], $3::int[], $4::text[], $5::text[], $6::text[])
+                              AS u(hist_id, art_num, cli_id, cod_bunker, cli_nombre, notas)
+                         ON CONFLICT (historial_cambio_id, cliente_id) DO NOTHING
+                         RETURNING id`,
+                        [nHistIds, nArtNums, nCliIds, nCodBunks, nCliNombres, nNotas]
+                    );
+                    notificacionesClientesCreadas = insNotifRes.rowCount || 0;
+                }
+            }
+        }
+
+        const catCambios = sim.cambios.catalogo_nodos || [];
+        if (catCambios.length > 0) {
+            await client.query(
+                `UPDATE public.nodos_articulos_catalogo AS nac
+                 SET costo_insumo_kg = u.c_kg,
+                     costo_insumo_fraccion = u.c_fracc,
+                     costo_envase_aplicado = u.c_env,
+                     costo_puro_total = u.c_puro,
+                     precio_base_nodo_neto = u.p_neto,
+                     precio_base_nodo_final = u.p_final,
+                     updated_at = NOW()
+                 FROM unnest($1::int[], $2::numeric[], $3::numeric[], $4::numeric[], $5::numeric[], $6::numeric[], $7::numeric[])
+                      AS u(id, c_kg, c_fracc, c_env, c_puro, p_neto, p_final)
+                 WHERE nac.id = u.id`,
+                [
+                    catCambios.map(x => Number(x.catalogo_id)),
+                    catCambios.map(x => Number(x.costo_insumo_kg_nuevo)),
+                    catCambios.map(x => Number(x.costo_insumo_fraccion_nuevo)),
+                    catCambios.map(x => Number(x.costo_envase_aplicado_nuevo)),
+                    catCambios.map(x => Number(x.costo_puro_total_nuevo)),
+                    catCambios.map(x => Number(x.precio_base_nodo_neto_nuevo)),
+                    catCambios.map(x => Number(x.precio_base_nodo_final_nuevo))
+                ]
+            );
+        }
+
+        const ofeCambios = sim.cambios.ofertas_nodos || [];
+        if (ofeCambios.length > 0) {
+            await client.query(
+                `UPDATE public.nodos_ofertas_gestor AS og
+                 SET precio_venta_vecino_anterior = CASE
+                         WHEN ABS(COALESCE(og.precio_venta_vecino, 0) - u.p_vecino) > 0.009 THEN og.precio_venta_vecino
+                         ELSE og.precio_venta_vecino_anterior
+                     END,
+                     precio_base_nodo_snapshot = u.p_base_snap,
+                     precio_venta_vecino = u.p_vecino,
+                     ganancia_unitaria_gestor = u.gan_unit,
+                     alerta_cambio_costo = CASE WHEN u.alerta THEN true ELSE og.alerta_cambio_costo END,
+                     updated_at = NOW()
+                 FROM unnest($1::int[], $2::numeric[], $3::numeric[], $4::numeric[], $5::boolean[])
+                      AS u(id, p_base_snap, p_vecino, gan_unit, alerta)
+                 WHERE og.id = u.id`,
+                [
+                    ofeCambios.map(x => Number(x.oferta_id)),
+                    ofeCambios.map(x => Number(x.precio_base_nodo_snapshot_nuevo)),
+                    ofeCambios.map(x => Number(x.precio_venta_vecino_nuevo)),
+                    ofeCambios.map(x => Number(x.ganancia_unitaria_gestor_nuevo)),
+                    ofeCambios.map(x => Boolean(x.alerta_cambio_costo))
                 ]
             );
         }
 
         if (ownClient) await client.query('COMMIT');
-        return {
-            ok: true,
-            aplicado: true,
-            resumen: sim.resumen,
-            alertas_costo_cero: sim.alertas_costo_cero,
-            cambios: sim.cambios
-        };
     } catch (err) {
         if (ownClient) await client.query('ROLLBACK').catch(() => {});
         throw err;
     } finally {
         if (ownClient) client.release();
     }
+
+    let b2bSyncDisparado = false;
+    if (ownClient && opts.omitir_b2b_sync !== true && (cambiosMayoristasRegistrados > 0 || (sim.cambios?.articulos?.length || 0) > 0)) {
+        try {
+            triggerB2BSync('precios', `Cascada de Costos (${opts.origen_cambio || 'CASCADA_COSTOS'}: ${cambiosMayoristasRegistrados} filas B2B)`);
+            b2bSyncDisparado = true;
+        } catch (_) {}
+    }
+
+    return {
+        ok: true,
+        aplicado: true,
+        resumen: {
+            ...sim.resumen,
+            cambios_mayoristas_historial: cambiosMayoristasRegistrados,
+            notificaciones_clientes_pendientes: notificacionesClientesCreadas,
+            b2b_sync_disparado: b2bSyncDisparado
+        },
+        alertas_costo_cero: sim.alertas_costo_cero,
+        cambios: sim.cambios
+    };
 }
 
 /**
@@ -1455,12 +1779,82 @@ async function auditarParidadPadron(runner = defaultPool) {
     };
 }
 
+/**
+ * Radar Ejecutivo de Impacto de Costos para Consola Única en Pizarra.
+ * 100% solo lectura: resume desfases vigentes agrupados por LDN y lista selectores de disparadores.
+ */
+async function obtenerRadarCostos(runner = defaultPool, opciones = {}) {
+    const q = runner || defaultPool;
+    const auditoria = await auditarParidadPadron(q);
+    const div = auditoria.divergencias || {};
+
+    const conteoPorLdn = {
+        LDN_1: 0, LDN_2: 0, LDN_3: 0, LDN_4: 0, LDN_5: 0, LDN_6: 0, LDN_8: 0
+    };
+    for (const a of div.articulos || []) {
+        if (a.ldn && conteoPorLdn[a.ldn] !== undefined) conteoPorLdn[a.ldn] += 1;
+    }
+
+    const totalDesfases =
+        Number(auditoria.resumen?.ingredientes_modificados || 0)
+        + Number(auditoria.resumen?.articulos_modificados || 0)
+        + Number(auditoria.resumen?.listas_modificadas || 0)
+        + Number(auditoria.resumen?.catalogo_nodos_modificados || 0)
+        + Number(auditoria.resumen?.ofertas_nodos_modificadas || 0);
+
+    let selectores = null;
+    if (opciones && opciones.incluirCatalogoSelectores) {
+        const [ingRes, bultosRes, listasRes] = await Promise.all([
+            q.query(`
+                SELECT id, codigo, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_patron,
+                       COALESCE(rol_ingrediente, 'MATERIA_PRIMA') AS rol_ingrediente,
+                       COALESCE(es_insumo, false) AS es_insumo
+                FROM public.ingredientes
+                ORDER BY nombre ASC
+            `),
+            q.query(`
+                SELECT articulo_id,
+                       COALESCE(NULLIF(BTRIM(descripcion_generada), ''), NULLIF(BTRIM(descripcion), ''), articulo_id) AS nombre,
+                       COALESCE(costo_base, 0)::numeric(14,2) AS costo_base,
+                       COALESCE(kilos_unidad, 1)::numeric(12,4) AS kilos_unidad
+                FROM public.bunker_articulos
+                ORDER BY articulo_id ASC
+            `),
+            q.query(`
+                SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial
+                FROM public.bunker_listas_precios
+                WHERE COALESCE(activa, true) = true
+                ORDER BY id ASC
+            `)
+        ]);
+        selectores = {
+            ingredientes: ingRes.rows,
+            articulos_bunker: bultosRes.rows,
+            listas: listasRes.rows
+        };
+    }
+
+    return {
+        ok: true,
+        solo_lectura: true,
+        total_desfases: totalDesfases,
+        resumen: auditoria.resumen,
+        resumen_por_ldn: conteoPorLdn,
+        alertas_costo_cero: auditoria.alertas_costo_cero,
+        recetas_huerfanas_omitidas: auditoria.recetas_huerfanas_omitidas,
+        divergencias: div,
+        selectores
+    };
+}
+
 module.exports = {
     cargarSnapshotGrafo,
+    clasificarLdnArticulo,
     resolverSubgrafoImpactado,
     simularCascada,
     aplicarCascada,
     auditarParidadPadron,
+    obtenerRadarCostos,
     calcularPrecioB2BLista,
     calcularEscalon2OfertaGestor
 };

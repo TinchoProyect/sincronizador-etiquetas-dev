@@ -1982,6 +1982,8 @@ async function conciliarCreditosBancariosNodos(payload = {}, helpers = {}) {
                      comprobante_referencia = $4,
                      fecha_conciliacion_pago = CASE WHEN $5 THEN NOW() ELSE fecha_conciliacion_pago END,
                      impactado_cta_cte_pago = $5,
+                     reserva_stock_estado = CASE WHEN $5 THEN 'CONFIRMADA' ELSE reserva_stock_estado END,
+                     reserva_stock_expira_at = CASE WHEN $5 THEN NULL ELSE reserva_stock_expira_at END,
                      movimiento_pago_cc_id = COALESCE($6, movimiento_pago_cc_id),
                      reclamo_pago_no_recibido = false,
                      reclamo_pago_motivo = NULL,
@@ -2034,7 +2036,11 @@ async function conciliarCreditosBancariosNodos(payload = {}, helpers = {}) {
     if (helpers.sincronizarCanastosEstacionNodos) {
         await helpers.sincronizarCanastosEstacionNodos();
     } else if (helpers.sincronizarNodosConCircuitoOperativoLamda) {
-        await helpers.sincronizarNodosConCircuitoOperativoLamda();
+        if (pedidosCompletadosIds.length === 1) {
+            await helpers.sincronizarNodosConCircuitoOperativoLamda(null, { pedidoId: pedidosCompletadosIds[0] });
+        } else {
+            await helpers.sincronizarNodosConCircuitoOperativoLamda();
+        }
     }
 
     return {

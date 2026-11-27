@@ -16,6 +16,7 @@
 
 const db = require('../config/database');
 const BunkerService = require('../../logistica/services/bunkerService');
+const { construirCteReservasUnificadas } = require('../utils/reservasStockSqlHelper');
 
 let _esquemaCombosListo = false;
 
@@ -1638,6 +1639,7 @@ async function obtenerMapaCombosYStockArmable(runner = null, skusFiltro = null) 
     }
 
     const res = await q.query(`
+        ${construirCteReservasUnificadas({ incluirReservasPadres: true, incluirStockPorBarras: false })}
         SELECT
             bcc.combo_articulo_id,
             bcc.componente_articulo_id,
@@ -1648,11 +1650,15 @@ async function obtenerMapaCombosYStockArmable(runner = null, skusFiltro = null) 
             GREATEST(0.001, COALESCE(ba_hijo.kilos_unidad, src_hijo.kilos_unidad, 0.25))::numeric(12,4) AS componente_kilos_unidad,
             COALESCE(nac_hijo.costo_puro_total, ba_hijo.costo_base, 0)::numeric(14,2) AS componente_costo_unitario,
             COALESCE(nac_hijo.precio_base_nodo_final, 0)::numeric(14,2) AS componente_precio_base_nodo,
-            COALESCE(src_hijo.stock_consolidado, 0)::numeric(14,3) AS stock_hijo_directo,
+            GREATEST(0, COALESCE(src_hijo.stock_consolidado, 0) - COALESCE(res_hijo.cantidad_reservada, 0))::numeric(14,3) AS stock_hijo_directo,
+            COALESCE(res_padres_hijo.reservado_en_packs, 0)::numeric(14,3) AS stock_hijo_reservado_packs,
             COALESCE(src_hijo.es_pack, ba_hijo.es_pack, false) AS hijo_es_pack,
             COALESCE(src_hijo.pack_hijo_codigo, ba_hijo.pack_hijo_codigo) AS hijo_pack_nieto_codigo,
             COALESCE(src_hijo.pack_unidades, ba_hijo.pack_unidades, 1)::int AS hijo_pack_unidades,
-            COALESCE(src_nieto.stock_consolidado, 0)::numeric(14,3) AS stock_nieto_directo
+            GREATEST(0, COALESCE(src_nieto.stock_consolidado, 0) - (
+                COALESCE(res_nieto.cantidad_reservada, 0) +
+                (COALESCE(res_hijo.cantidad_reservada, 0) * COALESCE(src_hijo.pack_unidades, ba_hijo.pack_unidades, 1))
+            ))::numeric(14,3) AS stock_nieto_directo
         FROM public.bunker_combos_componentes bcc
         JOIN public.bunker_articulos ba_hijo ON ba_hijo.articulo_id = bcc.componente_articulo_id
         LEFT JOIN public.nodos_articulos_catalogo nac_hijo
@@ -1660,12 +1666,18 @@ async function obtenerMapaCombosYStockArmable(runner = null, skusFiltro = null) 
               AND nac_hijo.activo = true
         LEFT JOIN public.stock_real_consolidado src_hijo
                ON UPPER(BTRIM(src_hijo.articulo_numero)) = UPPER(BTRIM(bcc.componente_articulo_id))
+        LEFT JOIN reservas_crudas res_hijo
+               ON UPPER(BTRIM(res_hijo.articulo_numero)) = UPPER(BTRIM(COALESCE(src_hijo.articulo_numero, bcc.componente_articulo_id)))
+        LEFT JOIN reservas_padres res_padres_hijo
+               ON UPPER(BTRIM(res_padres_hijo.pack_hijo_codigo)) = UPPER(BTRIM(COALESCE(src_hijo.articulo_numero, bcc.componente_articulo_id)))
         LEFT JOIN public.articulos art_nieto
                ON (COALESCE(src_hijo.pack_hijo_codigo, ba_hijo.pack_hijo_codigo) IS NOT NULL
                    AND (art_nieto.numero = COALESCE(src_hijo.pack_hijo_codigo, ba_hijo.pack_hijo_codigo)
                         OR art_nieto.codigo_barras = COALESCE(src_hijo.pack_hijo_codigo, ba_hijo.pack_hijo_codigo)))
         LEFT JOIN public.stock_real_consolidado src_nieto
                ON src_nieto.articulo_numero = COALESCE(art_nieto.numero, src_hijo.pack_hijo_codigo, ba_hijo.pack_hijo_codigo)
+        LEFT JOIN reservas_crudas res_nieto
+               ON UPPER(BTRIM(res_nieto.articulo_numero)) = UPPER(BTRIM(src_nieto.articulo_numero))
         ${whereSql}
         ORDER BY bcc.combo_articulo_id ASC, bcc.orden ASC, bcc.id ASC
     `, params);
@@ -1680,9 +1692,12 @@ async function obtenerMapaCombosYStockArmable(runner = null, skusFiltro = null) 
                 stock_armable: 0
             });
         }
-        let stockEfectivo = Math.floor(Math.max(0, Number(r.stock_hijo_directo || 0)));
+        let stockEfectivo;
         if (r.hijo_es_pack && r.hijo_pack_nieto_codigo && Number(r.hijo_pack_unidades) > 0) {
-            stockEfectivo = Math.floor(Math.max(0, Number(r.stock_nieto_directo || 0)) / Number(r.hijo_pack_unidades));
+            stockEfectivo = Math.floor(Math.max(0, Number(r.stock_hijo_directo || 0))) +
+                Math.floor(Math.max(0, Number(r.stock_nieto_directo || 0)) / Number(r.hijo_pack_unidades));
+        } else {
+            stockEfectivo = Math.floor(Math.max(0, Number(r.stock_hijo_directo || 0) - Number(r.stock_hijo_reservado_packs || 0)));
         }
         const cantReq = Math.max(1, Number(r.cantidad || 1));
         const armablesPorHijo = Math.floor(stockEfectivo / cantReq);
@@ -2174,11 +2189,12 @@ async function verificarDependenciasComboAntesDeEliminar(runner, articuloId) {
  */
 async function registrarEgresoStockConExplosionCombo(client, {
     pedidoIds = [],
+    referenciaPedidoCodigo = null,
     origenIngreso = 'nodos_barriales',
     observacionBase = 'Despacho Tienda'
 } = {}) {
     if (!Array.isArray(pedidoIds) || pedidoIds.length === 0) {
-        return { movimientos_generados: 0, detalle_skus: [] };
+        return { movimientos_generados: 0, omitidos_idempotencia: 0, detalle_skus: [] };
     }
     await asegurarEsquemaCombosCompuestos(client);
 
@@ -2186,6 +2202,7 @@ async function registrarEgresoStockConExplosionCombo(client, {
         SELECT
             npi.id AS pedido_item_id,
             npi.pedido_id,
+            npv.codigo_pedido,
             COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial,
             npi.cantidad::numeric(12,2) AS cantidad_item,
             COALESCE(npi.es_combo, nac.es_combo, ba.es_combo, false) AS es_combo,
@@ -2194,6 +2211,7 @@ async function registrarEgresoStockConExplosionCombo(client, {
             ba.codigo_barras,
             nac.insumo_envase_id
         FROM public.nodos_pedidos_items npi
+        JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
         LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
         LEFT JOIN public.bunker_articulos ba ON UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(COALESCE(nac.sku_nodo, npi.sku_nodo)))
         WHERE npi.pedido_id = ANY($1::int[])
@@ -2296,25 +2314,59 @@ async function registrarEgresoStockConExplosionCombo(client, {
         }
     }
 
+    const codigosPedidosUnicos = Array.from(new Set(itemsRes.rows.map(r => String(r.codigo_pedido || '').trim()).filter(Boolean)));
+    let refPedidoEfectivo = referenciaPedidoCodigo ? String(referenciaPedidoCodigo).trim() : null;
+    if (!refPedidoEfectivo && codigosPedidosUnicos.length === 1) {
+        refPedidoEfectivo = codigosPedidosUnicos[0];
+    }
+
     const detalleSkus = [];
+    let omitidosIdempotencia = 0;
     for (const entry of egresosPorSku.values()) {
         const sufijoCombo = entry.referencias_combo.size > 0
             ? ` [${Array.from(entry.referencias_combo).join(', ')}]`
             : '';
         const obsFinal = `${observacionBase}${sufijoCombo}`;
 
-        await client.query(`
-            INSERT INTO public.stock_ventas_movimientos (
-                articulo_numero, codigo_barras, kilos, cantidad, fecha, tipo, origen_ingreso, observaciones
-            ) VALUES ($1, $2, $3, $4, NOW(), 'egreso_venta', $5, $6)
-        `, [
-            entry.sku,
-            entry.codigo_barras || null,
-            entry.kilos,
-            entry.cantidad,
-            origenIngreso,
-            obsFinal
-        ]);
+        let insMovRes;
+        if (refPedidoEfectivo) {
+            insMovRes = await client.query(`
+                INSERT INTO public.stock_ventas_movimientos (
+                    articulo_numero, codigo_barras, kilos, cantidad, fecha, tipo, origen_ingreso, observaciones, referencia_pedido_codigo
+                ) VALUES ($1, $2, $3, $4, NOW(), 'egreso_venta', $5, $6, $7)
+                ON CONFLICT (UPPER(BTRIM(referencia_pedido_codigo)), UPPER(BTRIM(articulo_numero)), COALESCE(origen_ingreso, ''))
+                WHERE referencia_pedido_codigo IS NOT NULL AND tipo = 'egreso_venta'
+                DO NOTHING
+                RETURNING id
+            `, [
+                entry.sku,
+                entry.codigo_barras || null,
+                entry.kilos,
+                entry.cantidad,
+                origenIngreso,
+                obsFinal,
+                refPedidoEfectivo
+            ]);
+        } else {
+            insMovRes = await client.query(`
+                INSERT INTO public.stock_ventas_movimientos (
+                    articulo_numero, codigo_barras, kilos, cantidad, fecha, tipo, origen_ingreso, observaciones
+                ) VALUES ($1, $2, $3, $4, NOW(), 'egreso_venta', $5, $6)
+                RETURNING id
+            `, [
+                entry.sku,
+                entry.codigo_barras || null,
+                entry.kilos,
+                entry.cantidad,
+                origenIngreso,
+                obsFinal
+            ]);
+        }
+
+        if (insMovRes.rowCount === 0) {
+            omitidosIdempotencia += 1;
+            continue;
+        }
 
         const updStock = await client.query(`
             UPDATE public.stock_real_consolidado
@@ -2336,29 +2388,33 @@ async function registrarEgresoStockConExplosionCombo(client, {
         detalleSkus.push({
             sku: entry.sku,
             cantidad_descontada: entry.cantidad,
-            kilos_descontados: entry.kilos
+            kilos_descontados: entry.kilos,
+            referencia_pedido_codigo: refPedidoEfectivo
         });
     }
 
-    for (const [envId, cantEnv] of egresosEnvasesCombo.entries()) {
-        const ingRes = await client.query('SELECT id, COALESCE(stock_actual, 0) AS stock_actual FROM public.ingredientes WHERE id = $1 FOR UPDATE', [envId]);
-        if (ingRes.rowCount > 0) {
-            const stockAnt = Number(ingRes.rows[0].stock_actual || 0);
-            await client.query(`
-                UPDATE public.ingredientes
-                SET stock_actual = COALESCE(stock_actual, 0) - $1
-                WHERE id = $2
-            `, [cantEnv, envId]);
-            await client.query(`
-                INSERT INTO public.ingredientes_movimientos (
-                    ingrediente_id, tipo, kilos, fecha, carro_id, observaciones, stock_anterior
-                ) VALUES ($1, 'egreso', $2, NOW(), NULL, $3, $4)
-            `, [envId, -cantEnv, `${observacionBase} [Empaque Combo]`, stockAnt]);
+    if (detalleSkus.length > 0 || !refPedidoEfectivo) {
+        for (const [envId, cantEnv] of egresosEnvasesCombo.entries()) {
+            const ingRes = await client.query('SELECT id, COALESCE(stock_actual, 0) AS stock_actual FROM public.ingredientes WHERE id = $1 FOR UPDATE', [envId]);
+            if (ingRes.rowCount > 0) {
+                const stockAnt = Number(ingRes.rows[0].stock_actual || 0);
+                await client.query(`
+                    UPDATE public.ingredientes
+                    SET stock_actual = COALESCE(stock_actual, 0) - $1
+                    WHERE id = $2
+                `, [cantEnv, envId]);
+                await client.query(`
+                    INSERT INTO public.ingredientes_movimientos (
+                        ingrediente_id, tipo, kilos, fecha, carro_id, observaciones, stock_anterior
+                    ) VALUES ($1, 'egreso', $2, NOW(), NULL, $3, $4)
+                `, [envId, -cantEnv, `${observacionBase} [Empaque Combo]`, stockAnt]);
+            }
         }
     }
 
     return {
         movimientos_generados: detalleSkus.length,
+        omitidos_idempotencia: omitidosIdempotencia,
         detalle_skus: detalleSkus
     };
 }
