@@ -2538,13 +2538,19 @@ router.post('/liquidacion/nodos/:nodoId/corte-fulfillment', bloquearEnHostPublic
  * POST /api/produccion/nodos/liquidacion/canastos/:canastoId/reabrir-prueba
  * Permite en Modo Laboratorio reabrir los cobros y la liquidación del lote para repetir la prueba
  */
-router.post('/liquidacion/canastos/:canastoId/reabrir-prueba', async (req, res) => {
+router.post('/liquidacion/canastos/:canastoId/reabrir-prueba', bloquearEnHostPublicoTienda, async (req, res) => {
     try {
+        if (esSolicitudPublicaNodos(req) || !esModoLaboratorioWaSegura()) {
+            return res.status(403).json({
+                ok: false,
+                error: 'Operación /reabrir-prueba bloqueada fuera del Laboratorio aislado.'
+            });
+        }
         const tablero = await nodosService.reabrirLiquidacionCanastoPrueba(req.params.canastoId);
         res.json({ ok: true, tablero });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /liquidacion/canastos/:canastoId/reabrir-prueba:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.status === 403 ? 403 : 400).json({ ok: false, error: error.message });
     }
 });
 

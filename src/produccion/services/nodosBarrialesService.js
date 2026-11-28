@@ -17935,6 +17935,11 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
  * recalculando de forma determinista CB-NODO-xxx, CB-0006 y las subcuentas de vecinos.
  */
 async function reabrirLiquidacionCanastoPrueba(canastoId) {
+    if (!esModoLaboratorioNodos()) {
+        const err = new Error('Operación /reabrir-prueba bloqueada fuera del Laboratorio aislado.');
+        err.status = 403;
+        throw err;
+    }
     await asegurarEsquemaNodosBarriales();
 
     const client = await db.connect();
